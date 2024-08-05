@@ -1,0 +1,16 @@
+.benchmarks
+.idea
+frames/
+frames_multiple/
+frames_nudging/
+particles_frames/
+venv/
+__pycache__/
+output_video.mp4
+*.pdf
+*.png
+snapshots/
+.DS_Store
+*.cfg
+*.npy
+*.tsv
