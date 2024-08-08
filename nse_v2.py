@@ -69,6 +69,8 @@ def P_N(F, particle_locations, x, y, scale=False):
     interpolated_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), points, method='linear')
 
     Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='linear')
+    if np.isnan(Z_extrapolated).any():
+        Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='nearest')
     Z_extrapolated = np.nan_to_num(Z_extrapolated, nan=0)
 
     F['g'] = Z_extrapolated.reshape((128, 32))
