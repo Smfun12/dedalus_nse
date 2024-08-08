@@ -12,41 +12,67 @@ from dedalus.extras import flow_tools
 from dedalus.tools import post
 import scipy as sp
 import particles
+from scipy.linalg import solve
 
 logger = logging.getLogger(__name__)
 
 
-def P_N(F, particle_locations, x, y, scale=False):
-    """Calculate the Fourier mode projection of F with N terms."""
-    # Set the c_n to zero wherever n > N (in both axes).
+def rbf_(input_data):
+    x = input_data[0]
+    y = input_data[1]
+    eval_x = input_data[2]
+    eval_y = input_data[3]
+    f = input_data[4]
+    ep = input_data[5]
 
+    # Define the RBF function
+    rbf = lambda ep, r: np.exp(-(ep * r) ** 2)
+    # Calculate Expansion Coefficients
+    xd1, xd2 = np.meshgrid(x, x)
+    yd1, yd2 = np.meshgrid(y, y)
+
+    distM = np.sqrt((xd1 - xd2) ** 2 + (yd1 - yd2) ** 2)
+    B = rbf(ep, distM)
+    print("F", f)
+    print("B", B)
+    lambda_ = solve(B, f)
+    # Evaluate at new points
+    xd1, xd2 = np.meshgrid(x, eval_x)
+    yd1, yd2 = np.meshgrid(y, eval_y)
+
+    distM = np.sqrt((xd1 - xd2) ** 2 + (yd1 - yd2) ** 2)
+    A = rbf(ep, distM)
+    g = np.dot(A, lambda_)
+
+    # Output result
+    output = g
+    print(output)
+    return output
+
+
+def P_N(F, particle_locations, x, y, scale=False):
     x_flatten = x.flatten()
     y_flatten = y.flatten()
-    # print(y_flatten.shape)
-    # print(particle_locations)
-    # x_sensors = particle_locations[:, 0].flatten().T
-    # y_sensors = particle_locations[:, 1].flatten().T
-    x_sensors, y_sensors = np.array([-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7]), np.array(
-        [-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7])
-    x_sensors, y_sensors = x_flatten[0:128:20], y_flatten[0:128:5]
+    x_sensors = particle_locations[:, 0].flatten().T
+    y_sensors = particle_locations[:, 1].flatten().T
 
-    # Interpolate from grid data onto target points
-    interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
-                                                    method='cubic')
-    xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
-    interpolated_points = interp((xg, yg))
-    data = interpolated_points
+    X, Y = np.meshgrid(x_flatten, y_flatten, indexing='ij')
 
-    # Interpolate from target points onto full-grid
-    interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
-                                                    method='cubic')
+    # x_sensors = [-0.75, 0.75, -0.75, 0.75]
+    # y_sensors = [-0.75, 0.75, 0.75, -0.75]
+    # x_sensors, y_sensors = x_flatten[0:128:20], y_flatten[0:128:5]
+    points = np.array(list(zip(x_sensors, y_sensors)))
+    # xn = [-1, 1, -1, 1, -0.75, 0.75, -0.75, 0.75, 0]
+    # yn = [-1, -1, 1, 1, -0.75, 0.75, 0.75, -0.75, 0]
+    # points = np.array(list(zip(xn, yn)))
+    grid_points = np.array([X.flatten(), Y.flatten()]).T
+    interpolated_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), points, method='linear')
 
-    xf, yf = np.meshgrid(x_flatten, y_flatten, indexing='ij')
-    interp1 = interp((xf, yf))
-    F['g'] = interp1
+    Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='linear')
+    Z_extrapolated = np.nan_to_num(Z_extrapolated, nan=0)
+
+    F['g'] = Z_extrapolated.reshape((128, 32))
     # print(F['g'])
-    # sp.interpolate.griddata(zipped_array, func_s, (grid_x, grid_y), method='cubic')
-
     # F['c'][(X >= N) | (Y >= N)] = 0
     # F['g'] = sp.interpolate.RectBivariateSpline(x, y, F['g'])
     if scale:
@@ -119,7 +145,7 @@ u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.
 u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
 
 u_.set_scales(1)
-u_['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
+u_['g'] = 0.1 * (x / Lx) * (z / Lz)
 # u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
 # u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
 # u.differentiate('z', out=uz)
@@ -153,23 +179,31 @@ CFL.add_velocities(("u", "w"))
 # CFL.add_velocities(("u_", "w_"))
 
 # Initiate particles (N particles)
-N = 9
+N = 11
 particleTracker = particles.particles(N, domain)
 
 # Equispaced locations
-n = int(np.sqrt(particleTracker.N))
-xn = np.linspace(0, particleTracker.coordLength[0], n + 1)[:-1]
-dx = xn[1] - xn[0]
-xn += dx / 2.
-yn = np.linspace(0, particleTracker.coordLength[1], n + 1)[:-1]
-dy = yn[1] - yn[0]
-yn += dy / 2.
+# n = int(np.sqrt(particleTracker.N))
+# xn = np.linspace(0, particleTracker.coordLength[0], n + 1)[:-1]
+# dx = xn[1] - xn[0]
+# xn += dx / 2.
+# yn = np.linspace(0, particleTracker.coordLength[1], n + 1)[:-1]
+# dy = yn[1] - yn[0]
+# yn += dy / 2.
 # xn = np.linspace(-1, 1, N)
 # yn = np.linspace(-1, 1, N)
-# xn = [-0.75, -0.5, -0.25]
-# yn = [-0.75, -0.5, -0.25]
-particleTracker.positions = np.array([(xn[i], yn[j]) for i in range(n) for j in range(n)])
-# particleTracker.positions = np.array([(xn, yn)])
+# xn = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, -0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+# xn = [-1, -0.9, 0, 1]
+# yn = [-1, -0.9, 0, 1]
+xn = [-1, 1, -1, 1, -0.75, 0.75, -0.75, 0.75, 0, 0.75, -0.75]
+yn = [-1, -1, 1, 1, -0.75, 0.75, 0.75, -0.75, 0, 0, 0]
+# xn = np.linspace(-1, 1, 100)
+# yn = np.linspace(-1, 1, 100)
+# xn = np.linspace(-1, 1, 20)
+# yn = np.linspace(-1, 1, 40)
+# yn = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, -0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+# particleTracker.positions = np.array([(xn[i], yn[j]) for i in range(n) for j in range(n)])
+particleTracker.positions = np.array(list(zip(xn, yn)))
 # print(particleTracker.positions, xn, yn)
 locs = []
 pos = copy.copy(particleTracker.positions)
@@ -192,10 +226,9 @@ try:
         u_ = solver.state['u_']
         u = solver.state['u']
 
-        dT = solver.state['u_'] - solver.state['u']
+        dT['g'] = solver.state['u_']['g'] - solver.state['u']['g']
         ground_truth = solver.state['u']['g']
         estimate = solver.state['u_']['g']
-
 
         problem.parameters["driving"].args = [dT, particleTracker.positions, x, z]
         problem.parameters["driving"].original_args = [dT, particleTracker.positions, x, z]
@@ -220,6 +253,7 @@ try:
         # "dx(u) + wz = 0"
         # print("U equation: ", np.max(-nu * (u_x_x['g'] + uz_z['g']) + p_x['g'] + u_x['g'] * u['g'] + w['g'] * uz['g']))
         # print("W equation: ", np.max(-nu * (w_x_x['g'] + wz_z['g']) + p_z['g'] + w_x['g'] * u['g'] + w['g'] * wz['g']))
+        # print(particleTracker.positions)
         particleTracker.step(dt, (u_, w_))
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
