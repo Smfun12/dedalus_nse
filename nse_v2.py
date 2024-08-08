@@ -28,7 +28,45 @@ def P_N(F, particle_locations, x, y, scale=False):
     # y_sensors = particle_locations[:, 1].flatten().T
     x_sensors, y_sensors = np.array([-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7]), np.array(
         [-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7])
-    x_sensors, y_sensors = x_flatten[0:128:20], y_flatten[0:128:5]
+    x_sensors, y_sensors = x_flatten[0:128:1], y_flatten[0:128:1]
+
+    # Interpolate from grid data onto target points
+    interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
+                                                    method='cubic')
+    xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
+    interpolated_points = interp((xg, yg))
+    data = interpolated_points
+
+    # Interpolate from target points onto full-grid
+    interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
+                                                    method='cubic')
+
+    xf, yf = np.meshgrid(x_flatten, y_flatten, indexing='ij')
+    interp1 = interp((xf, yf))
+    F['g'] = interp1
+    # print(F['g'])
+    # sp.interpolate.griddata(zipped_array, func_s, (grid_x, grid_y), method='cubic')
+
+    # F['c'][(X >= N) | (Y >= N)] = 0
+    # F['g'] = sp.interpolate.RectBivariateSpline(x, y, F['g'])
+    if scale:
+        F.set_scales(1)
+
+    return F['g']
+
+def P_N_w(F, particle_locations, x, y, scale=False):
+    """Calculate the Fourier mode projection of F with N terms."""
+    # Set the c_n to zero wherever n > N (in both axes).
+
+    x_flatten = x.flatten()
+    y_flatten = y.flatten()
+    # print(y_flatten.shape)
+    # print(particle_locations)
+    # x_sensors = particle_locations[:, 0].flatten().T
+    # y_sensors = particle_locations[:, 1].flatten().T
+    x_sensors, y_sensors = np.array([-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7]), np.array(
+        [-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7])
+    x_sensors, y_sensors = x_flatten[0:128:1], y_flatten[0:128:1]
 
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
@@ -60,7 +98,7 @@ Lx, Lz = 2, 2
 Nx, Nz = 128, 128
 Reynolds = 5e4
 stop_sim_time = 10
-timestepper = de.timesteppers.RK222
+timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
 
@@ -75,15 +113,17 @@ D = nu
 
 # Problem
 driving = operators.GeneralFunction(domain, 'g', P_N, args=[])
+driving_v = operators.GeneralFunction(domain, 'g', P_N_w, args=[])
 problem = de.IVP(domain, variables=['p', 'p_', 'u', 'w', 'uz', 'wz', 'u_', 'w_', 'uz_', 'wz_'])
 # problem = de.IVP(domain, variables=['p', 'u_', 'w_', 'uz_', 'wz_'])
 problem.parameters['nu'] = nu
-problem.parameters['mu'] = 0.5
+problem.parameters['mu'] = 2
 problem.parameters['driving'] = driving
+problem.parameters['driving_v'] = driving_v
 # Nudge solution
 problem.add_equation("dx(u_) + wz_ = 0", condition="(nx != 0) or (nz != 0)")
 problem.add_equation("dt(u_) - nu*(dx(dx(u_)) + dz(uz_)) +dx(p_)= -(dx(u_)*u_ + w_*uz_) - mu*driving")
-problem.add_equation("dt(w_) - nu*(dx(dx(w_)) + dz(wz_)) +dz(p_)= -(dx(w_)*u_ + w_*wz_) - mu*driving")
+problem.add_equation("dt(w_) - nu*(dx(dx(w_)) + dz(wz_)) +dz(p_)= -(dx(w_)*u_ + w_*wz_) - mu*driving_v")
 problem.add_equation("uz_ - dz(u_) = 0")
 problem.add_equation("wz_ - dz(w_) = 0")
 problem.add_equation("p_ = 0", condition="(nx == 0) and (nz == 0)")
@@ -196,9 +236,16 @@ try:
         ground_truth = solver.state['u']['g']
         estimate = solver.state['u_']['g']
 
+        dT_w = solver.state['w_'] - solver.state['w']
+        ground_truth_w = solver.state['w']['g']
+        estimate_w = solver.state['w_']['g']
+
 
         problem.parameters["driving"].args = [dT, particleTracker.positions, x, z]
         problem.parameters["driving"].original_args = [dT, particleTracker.positions, x, z]
+
+        problem.parameters["driving_v"].args = [dT_w, particleTracker.positions, x, z]
+        problem.parameters["driving_v"].original_args = [dT_w, particleTracker.positions, x, z]
         dt = CFL.compute_dt()
         dt = solver.step(dt)
         # "dt(u) - nu*(dx(dx(u)) + dz(uz)) + dx(p) = -(dx(u)*u + w*uz)"
@@ -227,7 +274,8 @@ try:
             times.append(solver.sim_time)
             savet += savedt
         if (solver.iteration - 1) % 10 == 0:
-            print("Norm of solution", np.linalg.norm(ground_truth - estimate))
+            print("Norm of u error", np.linalg.norm(ground_truth - estimate))
+            print("Norm of w error", np.linalg.norm(ground_truth_w - estimate_w))
             max_w = np.sqrt(flow.max('w2'))
             logger.info(
                 'Iteration=%i, Time=%e, dt=%e, max(w)=%f' % (solver.iteration, solver.sim_time, dt, max_w))
