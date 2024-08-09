@@ -1,4 +1,5 @@
 import copy
+import os
 import random
 import time
 
@@ -15,6 +16,8 @@ import particles
 
 logger = logging.getLogger(__name__)
 
+every_n_sensor = 2
+
 
 def P_N(F, particle_locations, x, y, scale=False):
     """Calculate the Fourier mode projection of F with N terms."""
@@ -28,15 +31,13 @@ def P_N(F, particle_locations, x, y, scale=False):
     # y_sensors = particle_locations[:, 1].flatten().T
     x_sensors, y_sensors = np.array([-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7]), np.array(
         [-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7])
-    x_sensors, y_sensors = x_flatten[0:128:1], y_flatten[0:128:1]
-
+    x_sensors, y_sensors = x_flatten[0:128:every_n_sensor], y_flatten[0:128:every_n_sensor]
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
                                                     method='cubic')
     xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
     interpolated_points = interp((xg, yg))
     data = interpolated_points
-
     # Interpolate from target points onto full-grid
     interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
                                                     method='cubic')
@@ -54,6 +55,7 @@ def P_N(F, particle_locations, x, y, scale=False):
 
     return F['g']
 
+
 def P_N_w(F, particle_locations, x, y, scale=False):
     """Calculate the Fourier mode projection of F with N terms."""
     # Set the c_n to zero wherever n > N (in both axes).
@@ -66,7 +68,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
     # y_sensors = particle_locations[:, 1].flatten().T
     x_sensors, y_sensors = np.array([-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7]), np.array(
         [-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7])
-    x_sensors, y_sensors = x_flatten[0:128:1], y_flatten[0:128:1]
+    x_sensors, y_sensors = x_flatten[0:128:every_n_sensor], y_flatten[0:128:every_n_sensor]
 
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
@@ -97,7 +99,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 Lx, Lz = 2, 2
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 10
+stop_sim_time = 7.7
 timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
@@ -193,23 +195,25 @@ CFL.add_velocities(("u", "w"))
 # CFL.add_velocities(("u_", "w_"))
 
 # Initiate particles (N particles)
-N = 9
+N = 81
 particleTracker = particles.particles(N, domain)
 
 # Equispaced locations
 n = int(np.sqrt(particleTracker.N))
-xn = np.linspace(0, particleTracker.coordLength[0], n + 1)[:-1]
-dx = xn[1] - xn[0]
-xn += dx / 2.
-yn = np.linspace(0, particleTracker.coordLength[1], n + 1)[:-1]
-dy = yn[1] - yn[0]
-yn += dy / 2.
+# xn = np.linspace(0, particleTracker.coordLength[0], n + 1)[:-1]
+# dx = xn[1] - xn[0]
+# xn += dx / 2.
+# yn = np.linspace(0, particleTracker.coordLength[1], n + 1)[:-1]
+# dy = yn[1] - yn[0]
+# yn += dy / 2.
 # xn = np.linspace(-1, 1, N)
 # yn = np.linspace(-1, 1, N)
 # xn = [-0.75, -0.5, -0.25]
 # yn = [-0.75, -0.5, -0.25]
-particleTracker.positions = np.array([(xn[i], yn[j]) for i in range(n) for j in range(n)])
-# particleTracker.positions = np.array([(xn, yn)])
+xn, yn = x[0:128:every_n_sensor], z.T[0:128:every_n_sensor]
+X, Y = np.meshgrid(xn, yn)
+# particleTracker.positions = np.array([(xn[i], yn[j]) for i in range(n) for j in range(n)])
+particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
 # print(particleTracker.positions, xn, yn)
 locs = []
 pos = copy.copy(particleTracker.positions)
@@ -223,7 +227,9 @@ dT = problem.domain.new_field(name='dT')
 flow = flow_tools.GlobalFlowProperty(solver, cadence=10)
 flow.add_property("u*u/10", name='w2')
 # flow.add_property("u_*u_/10", name='w2')
-
+epochs = []
+u_errors = []
+w_errors = []
 # Main loop
 try:
     logger.info('Starting main loop')
@@ -240,7 +246,6 @@ try:
         ground_truth_w = solver.state['w']['g']
         estimate_w = solver.state['w_']['g']
 
-
         problem.parameters["driving"].args = [dT, particleTracker.positions, x, z]
         problem.parameters["driving"].original_args = [dT, particleTracker.positions, x, z]
 
@@ -248,34 +253,25 @@ try:
         problem.parameters["driving_v"].original_args = [dT_w, particleTracker.positions, x, z]
         dt = CFL.compute_dt()
         dt = solver.step(dt)
-        # "dt(u) - nu*(dx(dx(u)) + dz(uz)) + dx(p) = -(dx(u)*u + w*uz)"
-        # "dt(w) - nu*(dx(dx(w)) + dz(wz)) + dz(p) = -(dx(w)*u + w*wz)"
-        # print('dt: ', dt)
-        # u_ = solver.state['u']
-        # p = solver.state['p']
-        # uz = solver.state['uz']
-        # wz = solver.state['wz']
-        # u_x = u_.differentiate('x')
-        # w_x = w.differentiate('x')
-        # w_x_x = w_x.differentiate('x')
-        # u_x_x = u_x.differentiate('x')
-        # p_x = p.differentiate('x')
-        # p_z = p.differentiate('z')
-        # uz_z = uz.differentiate('z')
-        # wz_z = wz.differentiate('z')
-        # wz = solver.state['wz']
-        # "dx(u) + wz = 0"
-        # print("U equation: ", np.max(-nu * (u_x_x['g'] + uz_z['g']) + p_x['g'] + u_x['g'] * u['g'] + w['g'] * uz['g']))
-        # print("W equation: ", np.max(-nu * (w_x_x['g'] + wz_z['g']) + p_z['g'] + w_x['g'] * u['g'] + w['g'] * wz['g']))
+
+        u_error = np.linalg.norm(ground_truth - estimate)
+        w_error = np.linalg.norm(ground_truth_w - estimate_w)
+
+        u_errors.append(u_error)
+        w_errors.append(w_error)
+        epochs.append(solver.sim_time)
+
         particleTracker.step(dt, (u_, w_))
+        particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
             locs.append(pos)
             times.append(solver.sim_time)
             savet += savedt
         if (solver.iteration - 1) % 10 == 0:
-            print("Norm of u error", np.linalg.norm(ground_truth - estimate))
-            print("Norm of w error", np.linalg.norm(ground_truth_w - estimate_w))
+            print("Norm of u error", u_error)
+            print("Norm of w error", w_error)
+            # print("Particle positions", particleTracker.positions)
             max_w = np.sqrt(flow.max('w2'))
             logger.info(
                 'Iteration=%i, Time=%e, dt=%e, max(w)=%f' % (solver.iteration, solver.sim_time, dt, max_w))
@@ -294,6 +290,11 @@ finally:
     if rank == 0:
         np.save('rbLocs', locs)
         np.save('rbTimes', times)
+    if not os.path.isdir("plots"):
+        os.makedirs("plots")
+    np.save('plots/rbErrors', u_errors)
+    np.save('plots/wbErrors', w_errors)
+    np.save('plots/epochs', epochs)
 
     logger.info('Iterations: %i' % solver.iteration)
     logger.info('Sim end time: %f' % solver.sim_time)

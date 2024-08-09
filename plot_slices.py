@@ -51,7 +51,7 @@ def main(filename, start, count, output):
                 axes = mfig.add_axes(i, j, [0, 0, 1, 1])
                 # Call 3D plotting helper, slicing in time
                 dset = file['tasks'][task]
-                if task == 'u_':
+                if task == 'u_' or task == 'w_':
                     if isinstance(dset, Field):
                         dset = plot_tools.FieldWrapper(dset)
                     img_axes = (0, 1, 2)
@@ -84,7 +84,7 @@ def main(filename, start, count, output):
                     paxes.axis(plot_tools.pad_limits(xmesh, ymesh))
                     # paxes.plot(positions)
                     N = 10
-                    paxes.plot(positions[0:N, index, 0], positions[0:N, index, 1], '.')
+                    paxes.plot(positions[:, index, 0], positions[:, index, 1], '.')
                     paxes.tick_params(length=0, width=0)
 
                     cbar = plt.colorbar(plot, cax=caxes, orientation='horizontal',
