@@ -16,7 +16,7 @@ import particles
 
 logger = logging.getLogger(__name__)
 
-every_n_sensor = 2
+every_n_sensor = 1
 
 
 def P_N(F, particle_locations, x, y, scale=False):
@@ -195,7 +195,7 @@ CFL.add_velocities(("u", "w"))
 # CFL.add_velocities(("u_", "w_"))
 
 # Initiate particles (N particles)
-N = 81
+N = 16384
 particleTracker = particles.particles(N, domain)
 
 # Equispaced locations
