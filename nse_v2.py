@@ -72,14 +72,14 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
-                                                    method='cubic')
+                                                    method='nearest')
     xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
     interpolated_points = interp((xg, yg))
     data = interpolated_points
 
     # Interpolate from target points onto full-grid
     interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
-                                                    method='cubic')
+                                                    method='nearest')
 
     xf, yf = np.meshgrid(x_flatten, y_flatten, indexing='ij')
     interp1 = interp((xf, yf))
