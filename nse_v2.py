@@ -16,7 +16,7 @@ import particles
 
 logger = logging.getLogger(__name__)
 
-every_n_sensor = 1
+every_n_sensor = 15
 
 
 def P_N(F, particle_locations, x, y, scale=False):
@@ -34,13 +34,13 @@ def P_N(F, particle_locations, x, y, scale=False):
     x_sensors, y_sensors = x_flatten[0:128:every_n_sensor], y_flatten[0:128:every_n_sensor]
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
-                                                    method='cubic')
+                                                    method='nearest')
     xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
     interpolated_points = interp((xg, yg))
     data = interpolated_points
     # Interpolate from target points onto full-grid
     interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
-                                                    method='cubic')
+                                                    method='nearest')
 
     xf, yf = np.meshgrid(x_flatten, y_flatten, indexing='ij')
     interp1 = interp((xf, yf))
@@ -99,7 +99,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 Lx, Lz = 2, 2
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 7.7
+stop_sim_time = 80
 timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
@@ -156,12 +156,23 @@ w_ = solver.state['w_']
 # wz = solver.state['wz']
 
 u.set_scales(1)
-u['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
-u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
+# Initial conditions
+gshape = domain.dist.grid_layout.global_shape(scales=1)
+slices = domain.dist.grid_layout.slices(scales=1)
+rand = np.random.RandomState(seed=42)
+noise = rand.standard_normal(gshape)[slices]
+
+# Linear background + perturbations damped at walls
+zb, zt = z_basis.interval
+pert = 1e-3 * noise * (zt - z) * (z - zb)
+u['g'] = pert
+# u['g'] = u_init
+# u['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
+# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
+# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
 
 u_.set_scales(1)
-u_['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
+u_['g'] = 1e-2 * noise * (zt - z) * (z - zb)
 # u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
 # u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
 # u.differentiate('z', out=uz)
@@ -195,7 +206,7 @@ CFL.add_velocities(("u", "w"))
 # CFL.add_velocities(("u_", "w_"))
 
 # Initiate particles (N particles)
-N = 16384
+N = 81
 particleTracker = particles.particles(N, domain)
 
 # Equispaced locations
@@ -235,8 +246,6 @@ try:
     logger.info('Starting main loop')
     start_time = time.time()
     while solver.proceed:
-        u_ = solver.state['u_']
-        u = solver.state['u']
 
         dT = solver.state['u_'] - solver.state['u']
         ground_truth = solver.state['u']['g']
@@ -271,7 +280,6 @@ try:
         if (solver.iteration - 1) % 10 == 0:
             print("Norm of u error", u_error)
             print("Norm of w error", w_error)
-            # print("Particle positions", particleTracker.positions)
             max_w = np.sqrt(flow.max('w2'))
             logger.info(
                 'Iteration=%i, Time=%e, dt=%e, max(w)=%f' % (solver.iteration, solver.sim_time, dt, max_w))
