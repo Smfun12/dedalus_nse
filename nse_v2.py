@@ -16,7 +16,7 @@ import particles
 
 logger = logging.getLogger(__name__)
 
-every_n_sensor = 15
+every_n_sensor = 1
 
 
 def P_N(F, particle_locations, x, y, scale=False):
@@ -99,7 +99,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 Lx, Lz = 2, 2
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 80
+stop_sim_time = 38
 timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
@@ -164,15 +164,42 @@ noise = rand.standard_normal(gshape)[slices]
 
 # Linear background + perturbations damped at walls
 zb, zt = z_basis.interval
-pert = 1e-3 * noise * (zt - z) * (z - zb)
-u['g'] = pert
+pert = 1e1 * noise * (zt - z) * (z - zb)
+# u['g'] = pert
+def generate_noise_2d(size, scale):
+    x = np.linspace(-1, 1, size)
+    y = np.linspace(-1, 1, size)
+    X, Y = np.meshgrid(x, y)
+    return np.sin(scale * X) + np.sin(scale * Y)
+
+
+def generate_turbulence_2d(size, scale, octaves=4):
+    noise = np.zeros((size, size))
+    frequency = 1.0
+    amplitude = 1.0
+
+    for _ in range(octaves):
+        noise += amplitude * generate_noise_2d(size, scale * frequency)
+        frequency *= 2.0
+        amplitude *= 0.5
+
+    return noise
+
+
+# Parameters
+size = 128
+scale = 3.0
+
+# Generate turbulence
+turbulence = generate_turbulence_2d(size, scale)
+u['g'] = 0.01*turbulence
 # u['g'] = u_init
 # u['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
 # u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
 # u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
 
 u_.set_scales(1)
-u_['g'] = 1e-2 * noise * (zt - z) * (z - zb)
+u_['g'] = 0.05*turbulence
 # u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
 # u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
 # u.differentiate('z', out=uz)
@@ -206,7 +233,7 @@ CFL.add_velocities(("u", "w"))
 # CFL.add_velocities(("u_", "w_"))
 
 # Initiate particles (N particles)
-N = 81
+N = 16384
 particleTracker = particles.particles(N, domain)
 
 # Equispaced locations
