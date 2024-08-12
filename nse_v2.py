@@ -78,7 +78,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 Lx, Lz = 2, 2
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 3
+stop_sim_time = 10
 timestepper = de.timesteppers.RK222
 max_timestep = 1e-2
 dtype = np.float64
@@ -129,14 +129,25 @@ w_ = solver.state['w_']
 # wz = solver.state['wz']
 
 u.set_scales(1)
-u['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
-u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
+# Initial conditions
+gshape = domain.dist.grid_layout.global_shape(scales=1)
+slices = domain.dist.grid_layout.slices(scales=1)
+rand = np.random.RandomState(seed=42)
+noise = rand.standard_normal(gshape)[slices]
+
+# Linear background + perturbations damped at walls
+zb, zt = z_basis.interval
+pert = 1e-3 * noise * (zt - z) * (z - zb)
+u['g'] = pert
+# u['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
+# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
+# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
 
 u_.set_scales(1)
-u_['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
-u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
+u_['g'] = 1e-2 * noise * (zt - z) * (z - zb)
+# u_['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
+# u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
+# u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
 
 # Timestepping and output
 dt = 0.125
@@ -187,7 +198,7 @@ xn, yn = x[0:128:every_n_x_sensor], z.T[0:128:every_n_y_sensor]
 X, Y = np.meshgrid(xn, yn)
 # particleTracker.positions = np.array([(xn[i], yn[j]) for i in range(n) for j in range(n)])
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
-
+init_particle_pos = copy.deepcopy(particleTracker.positions)
 # np.random.shuffle(xn), np.random.shuffle(yn)
 # yn = [-1, -1, 1, 1, -0.75, 0.75, 0.75, -0.75, 0, 0, 0]
 # xn = np.linspace(-1, 1, 100)
@@ -209,7 +220,7 @@ dT = problem.domain.new_field(name='dT')
 dT_v = problem.domain.new_field(name='dT_v')
 # Flow properties
 flow = flow_tools.GlobalFlowProperty(solver, cadence=10)
-flow.add_property("u*u/10", name='w2')
+flow.add_property("u*u", name='w2')
 # flow.add_property("u_*u_/10", name='w2')
 epochs = []
 u_errors = []
@@ -247,6 +258,7 @@ try:
         epochs.append(solver.sim_time)
 
         particleTracker.step(dt, (u_, w_))
+        # print(particleTracker.positions)
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
             locs.append(pos)
@@ -263,6 +275,7 @@ except Exception as e:
     print(e)
     raise
 finally:
+    print("difference", np.linalg.norm(init_particle_pos - particleTracker.positions))
     end_time = time.time()
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
