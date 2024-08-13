@@ -75,7 +75,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 
 
 # Parameters
-Lx, Lz = 2, 2
+Lx, Lz = 2*np.pi, 2*np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
 stop_sim_time = 10
@@ -84,8 +84,8 @@ max_timestep = 1e-2
 dtype = np.float64
 
 # Bases
-x_basis = de.Fourier('x', Nx, interval=(-1, 1), dealias=1)
-z_basis = de.Fourier('z', Nz, interval=(-1, 1), dealias=1)
+x_basis = de.Fourier('x', Nx, interval=(-np.pi, np.pi), dealias=1)
+z_basis = de.Fourier('z', Nz, interval=(-np.pi, np.pi), dealias=1)
 domain = de.Domain([x_basis, z_basis], grid_dtype=np.float64)
 
 # Substitutions
@@ -129,25 +129,11 @@ w_ = solver.state['w_']
 # wz = solver.state['wz']
 
 u.set_scales(1)
-# Initial conditions
-gshape = domain.dist.grid_layout.global_shape(scales=1)
-slices = domain.dist.grid_layout.slices(scales=1)
-rand = np.random.RandomState(seed=42)
-noise = rand.standard_normal(gshape)[slices]
-
-# Linear background + perturbations damped at walls
-zb, zt = z_basis.interval
-pert = 1e-3 * noise * (zt - z) * (z - zb)
-u['g'] = pert
-# u['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
-# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
+ic = sp.io.loadmat("ic.m")
+u['g'] = np.array(ic['u1_cut'])
 
 u_.set_scales(1)
-u_['g'] = 1e-2 * noise * (zt - z) * (z - zb)
-# u_['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
-# u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-# u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
+u_['g'] = 0.1*np.array(ic['u1_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -175,40 +161,17 @@ CFL.add_velocities(("u", "w"))
 # CFL.add_velocities(("u_", "w_"))
 
 # Initiate particles (N particles)
-N = 49
+N = 16384
 particleTracker = particles.particles(N, domain)
 
-# Equispaced locations
-# n = int(np.sqrt(particleTracker.N))
-# xn = np.linspace(0, particleTracker.coordLength[0], n + 1)[:-1]
-# dx = xn[1] - xn[0]
-# xn += dx / 2.
-# yn = np.linspace(0, particleTracker.coordLength[1], n + 1)[:-1]
-# dy = yn[1] - yn[0]
-# yn += dy / 2.
-# xn = np.linspace(-1, 1, N)
-# yn = np.linspace(-1, 1, N)
-# xn = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, -0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-# xn = [-1, -0.9, 0, 1]
-# yn = [-1, -0.9, 0, 1]
-# xn = [-1, 1, -1, 1, -0.75, 0.75, -0.75, 0.75, 0, 0.75, -0.75]
-every_n_x_sensor = 20
-every_n_y_sensor = 20
+every_n_x_sensor = 1
+every_n_y_sensor = 1
 xn, yn = x[0:128:every_n_x_sensor], z.T[0:128:every_n_y_sensor]
 X, Y = np.meshgrid(xn, yn)
-# particleTracker.positions = np.array([(xn[i], yn[j]) for i in range(n) for j in range(n)])
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
 init_particle_pos = copy.deepcopy(particleTracker.positions)
-# np.random.shuffle(xn), np.random.shuffle(yn)
-# yn = [-1, -1, 1, 1, -0.75, 0.75, 0.75, -0.75, 0, 0, 0]
-# xn = np.linspace(-1, 1, 100)
-# yn = np.linspace(-1, 1, 100)
-# xn = np.linspace(-1, 1, 20)
-# yn = np.linspace(-1, 1, 40)
-# yn = [-1, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, -0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-# particleTracker.positions = np.array([(xn[i], yn[j]) for i in range(n) for j in range(n)])
-# particleTracker.positions = grid_points
-# print(particleTracker.positions, xn, yn)
+
+
 locs = []
 pos = copy.copy(particleTracker.positions)
 locs.append(pos)
@@ -264,7 +227,7 @@ try:
             locs.append(pos)
             times.append(solver.sim_time)
             savet += savedt
-        if (solver.iteration - 1) % 10 == 0:
+        if (solver.iteration - 1) % 50 == 0:
             print("Norm of u", np.linalg.norm(ground_truth - estimate))
             print("Norm of w", np.linalg.norm(ground_truth_w - estimate_w))
             max_w = np.sqrt(flow.max('w2'))
