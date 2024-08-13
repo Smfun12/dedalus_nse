@@ -96,17 +96,17 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 
 
 # Parameters
-Lx, Lz = 2, 2
+Lx, Lz = 2 * np.pi, 2 * np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 38
+stop_sim_time = 10
 timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
 
 # Bases
-x_basis = de.Fourier('x', Nx, interval=(-1, 1), dealias=1)
-z_basis = de.Fourier('z', Nz, interval=(-1, 1), dealias=1)
+x_basis = de.Fourier('x', Nx, interval=(-np.pi, np.pi), dealias=1)
+z_basis = de.Fourier('z', Nz, interval=(-np.pi, np.pi), dealias=1)
 domain = de.Domain([x_basis, z_basis], grid_dtype=np.float64)
 
 # Substitutions
@@ -155,57 +155,13 @@ w = solver.state['w']
 w_ = solver.state['w_']
 # wz = solver.state['wz']
 
+# Initial condition
 u.set_scales(1)
-# Initial conditions
-gshape = domain.dist.grid_layout.global_shape(scales=1)
-slices = domain.dist.grid_layout.slices(scales=1)
-rand = np.random.RandomState(seed=42)
-noise = rand.standard_normal(gshape)[slices]
-
-# Linear background + perturbations damped at walls
-zb, zt = z_basis.interval
-pert = 1e1 * noise * (zt - z) * (z - zb)
-# u['g'] = pert
-def generate_noise_2d(size, scale):
-    x = np.linspace(-1, 1, size)
-    y = np.linspace(-1, 1, size)
-    X, Y = np.meshgrid(x, y)
-    return np.sin(scale * X) + np.sin(scale * Y)
-
-
-def generate_turbulence_2d(size, scale, octaves=4):
-    noise = np.zeros((size, size))
-    frequency = 1.0
-    amplitude = 1.0
-
-    for _ in range(octaves):
-        noise += amplitude * generate_noise_2d(size, scale * frequency)
-        frequency *= 2.0
-        amplitude *= 0.5
-
-    return noise
-
-
-# Parameters
-size = 128
-scale = 3.0
-
-# Generate turbulence
-turbulence = generate_turbulence_2d(size, scale)
-u['g'] = 0.01*turbulence
-# u['g'] = u_init
-# u['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
-# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
+ic = sp.io.loadmat("ic.m")
+u['g'] = np.array(ic['u1_cut'])
 
 u_.set_scales(1)
-u_['g'] = 0.05*turbulence
-# u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-# u_['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
-# u.differentiate('z', out=uz)
-# w.differentiate('z', out=wz)
-# u['g'][1] += 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-# u['g'][1] += 0.1 * np.exp(-(z + 0.5) ** 2 / 0.01)
+u_['g'] = 0.1 * np.array(ic['u1_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -236,23 +192,10 @@ CFL.add_velocities(("u", "w"))
 N = 16384
 particleTracker = particles.particles(N, domain)
 
-# Equispaced locations
-n = int(np.sqrt(particleTracker.N))
-# xn = np.linspace(0, particleTracker.coordLength[0], n + 1)[:-1]
-# dx = xn[1] - xn[0]
-# xn += dx / 2.
-# yn = np.linspace(0, particleTracker.coordLength[1], n + 1)[:-1]
-# dy = yn[1] - yn[0]
-# yn += dy / 2.
-# xn = np.linspace(-1, 1, N)
-# yn = np.linspace(-1, 1, N)
-# xn = [-0.75, -0.5, -0.25]
-# yn = [-0.75, -0.5, -0.25]
 xn, yn = x[0:128:every_n_sensor], z.T[0:128:every_n_sensor]
 X, Y = np.meshgrid(xn, yn)
-# particleTracker.positions = np.array([(xn[i], yn[j]) for i in range(n) for j in range(n)])
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
-# print(particleTracker.positions, xn, yn)
+
 locs = []
 pos = copy.copy(particleTracker.positions)
 locs.append(pos)
