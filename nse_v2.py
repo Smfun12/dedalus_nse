@@ -19,76 +19,54 @@ logger = logging.getLogger(__name__)
 every_n_sensor = 1
 
 
-def P_N(F, particle_locations, x, y, scale=False):
-    """Calculate the Fourier mode projection of F with N terms."""
-    # Set the c_n to zero wherever n > N (in both axes).
+def P_N(F, x, y, scale=False):
 
     x_flatten = x.flatten()
     y_flatten = y.flatten()
-    # print(y_flatten.shape)
-    # print(particle_locations)
-    # x_sensors = particle_locations[:, 0].flatten().T
-    # y_sensors = particle_locations[:, 1].flatten().T
-    x_sensors, y_sensors = np.array([-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7]), np.array(
-        [-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7])
+
     x_sensors, y_sensors = x_flatten[0:128:every_n_sensor], y_flatten[0:128:every_n_sensor]
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
-                                                    method='nearest')
+                                                    method='linear')
     xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
     interpolated_points = interp((xg, yg))
     data = interpolated_points
     # Interpolate from target points onto full-grid
     interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
-                                                    method='nearest')
+                                                    method='linear')
 
     xf, yf = np.meshgrid(x_flatten, y_flatten, indexing='ij')
     interp1 = interp((xf, yf))
     F['g'] = interp1
-    # print(F['g'])
-    # sp.interpolate.griddata(zipped_array, func_s, (grid_x, grid_y), method='cubic')
 
-    # F['c'][(X >= N) | (Y >= N)] = 0
-    # F['g'] = sp.interpolate.RectBivariateSpline(x, y, F['g'])
     if scale:
         F.set_scales(1)
 
     return F['g']
 
 
-def P_N_w(F, particle_locations, x, y, scale=False):
-    """Calculate the Fourier mode projection of F with N terms."""
-    # Set the c_n to zero wherever n > N (in both axes).
+def P_N_w(F, x, y, scale=False):
 
     x_flatten = x.flatten()
     y_flatten = y.flatten()
-    # print(y_flatten.shape)
-    # print(particle_locations)
-    # x_sensors = particle_locations[:, 0].flatten().T
-    # y_sensors = particle_locations[:, 1].flatten().T
-    x_sensors, y_sensors = np.array([-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7]), np.array(
-        [-0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7])
+
     x_sensors, y_sensors = x_flatten[0:128:every_n_sensor], y_flatten[0:128:every_n_sensor]
 
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
-                                                    method='nearest')
+                                                    method='linear')
     xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
     interpolated_points = interp((xg, yg))
     data = interpolated_points
 
     # Interpolate from target points onto full-grid
     interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
-                                                    method='nearest')
+                                                    method='linear')
 
     xf, yf = np.meshgrid(x_flatten, y_flatten, indexing='ij')
     interp1 = interp((xf, yf))
     F['g'] = interp1
-    # print(F['g'])
-    # sp.interpolate.griddata(zipped_array, func_s, (grid_x, grid_y), method='cubic')
 
-    # F['c'][(X >= N) | (Y >= N)] = 0
-    # F['g'] = sp.interpolate.RectBivariateSpline(x, y, F['g'])
     if scale:
         F.set_scales(1)
 
@@ -117,7 +95,7 @@ D = nu
 driving = operators.GeneralFunction(domain, 'g', P_N, args=[])
 driving_v = operators.GeneralFunction(domain, 'g', P_N_w, args=[])
 problem = de.IVP(domain, variables=['p', 'p_', 'u', 'w', 'uz', 'wz', 'u_', 'w_', 'uz_', 'wz_'])
-# problem = de.IVP(domain, variables=['p', 'u_', 'w_', 'uz_', 'wz_'])
+
 problem.parameters['nu'] = nu
 problem.parameters['mu'] = 2
 problem.parameters['driving'] = driving
@@ -136,11 +114,6 @@ problem.add_equation("dt(w) - nu*(dx(dx(w)) + dz(wz)) + dz(p) = -(dx(w)*u + w*wz
 problem.add_equation("uz - dz(u) = 0")
 problem.add_equation("wz - dz(w) = 0")
 problem.add_equation("p = 0", condition="(nx == 0) and (nz == 0)")
-# problem.add_bc("u(z='left') = 0")
-# problem.add_bc("w(z='left') = 0")
-# problem.add_bc("u(z='right') = 0")
-# problem.add_bc("w(z='right') = 0", condition="(nx != 0)")
-# problem.add_bc("integ(p) = 0", condition="(nx == 0)")  # Pressure gauge
 
 # Solver
 solver = problem.build_solver(timestepper)
@@ -150,10 +123,8 @@ solver.stop_sim_time = stop_sim_time
 x, z = domain.all_grids()
 u = solver.state['u']
 u_ = solver.state['u_']
-# uz = solver.state['uz']
 w = solver.state['w']
 w_ = solver.state['w_']
-# wz = solver.state['wz']
 
 # Initial condition
 u.set_scales(1)
@@ -161,7 +132,7 @@ ic = sp.io.loadmat("ic.m")
 u['g'] = np.array(ic['u1_cut'])
 
 u_.set_scales(1)
-u_['g'] = 0.1 * np.array(ic['u1_cut'])
+u_['g'] = 0.9*np.array(ic['u1_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -172,7 +143,6 @@ solver.stop_sim_time = stop_sim_time
 analysis_tasks = []
 # Analysis
 snapshots = solver.evaluator.add_file_handler('snapshots', sim_dt=0.25, max_writes=50, mode=fh_mode)
-# snapshots.add_system(solver.state)
 snapshots.add_task('p')
 snapshots.add_task('u')
 snapshots.add_task('w')
@@ -186,7 +156,6 @@ analysis_tasks.append(snapshots)
 CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.05,
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
-# CFL.add_velocities(("u_", "w_"))
 
 # Initiate particles (N particles)
 N = 16384
@@ -207,7 +176,7 @@ dT = problem.domain.new_field(name='dT')
 # Flow properties
 flow = flow_tools.GlobalFlowProperty(solver, cadence=10)
 flow.add_property("u*u/10", name='w2')
-# flow.add_property("u_*u_/10", name='w2')
+
 epochs = []
 u_errors = []
 w_errors = []
@@ -225,13 +194,11 @@ try:
         ground_truth_w = solver.state['w']['g']
         estimate_w = solver.state['w_']['g']
 
-        problem.parameters["driving"].args = [dT, particleTracker.positions, x, z]
-        problem.parameters["driving"].original_args = [dT, particleTracker.positions, x, z]
+        problem.parameters["driving"].args = [dT, x, z]
+        problem.parameters["driving"].original_args = [dT, x, z]
 
-        problem.parameters["driving_v"].args = [dT_w, particleTracker.positions, x, z]
-        problem.parameters["driving_v"].original_args = [dT_w, particleTracker.positions, x, z]
-        dt = CFL.compute_dt()
-        dt = solver.step(dt)
+        problem.parameters["driving_v"].args = [dT_w, x, z]
+        problem.parameters["driving_v"].original_args = [dT_w, x, z]
 
         u_error = np.linalg.norm(ground_truth - estimate)
         w_error = np.linalg.norm(ground_truth_w - estimate_w)
@@ -240,8 +207,9 @@ try:
         w_errors.append(w_error)
         epochs.append(solver.sim_time)
 
-        particleTracker.step(dt, (u_, w_))
-        particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
+        dt = CFL.compute_dt()
+        dt = solver.step(dt)
+
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
             locs.append(pos)
