@@ -16,11 +16,8 @@ import particles
 
 logger = logging.getLogger(__name__)
 
-every_n_sensor = 1
-
 
 def P_N(F, x, y, scale=False):
-
     x_flatten = x.flatten()
     y_flatten = y.flatten()
 
@@ -46,7 +43,6 @@ def P_N(F, x, y, scale=False):
 
 
 def P_N_w(F, x, y, scale=False):
-
     x_flatten = x.flatten()
     y_flatten = y.flatten()
 
@@ -128,11 +124,15 @@ w_ = solver.state['w_']
 
 # Initial condition
 u.set_scales(1)
+w.set_scales(1)
 ic = sp.io.loadmat("ic.m")
 u['g'] = np.array(ic['u1_cut'])
+w['g'] = 0.5 * np.array(ic['u1_cut'])
 
 u_.set_scales(1)
-u_['g'] = 0.9*np.array(ic['u1_cut'])
+w_.set_scales(1)
+u_['g'] = 0.1 * np.array(ic['u1_cut'])
+w_['g'] = 0.7 * np.array(ic['u1_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -158,7 +158,8 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
 CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
-N = 16384
+N = 169
+every_n_sensor = 10
 particleTracker = particles.particles(N, domain)
 
 xn, yn = x[0:128:every_n_sensor], z.T[0:128:every_n_sensor]
