@@ -138,12 +138,15 @@ u_ = solver.state['u_']
 w = solver.state['w']
 w_ = solver.state['w_']
 
-u.set_scales(1)
+w.set_scales(1)
 ic = sp.io.loadmat("ic.m")
 u['g'] = np.array(ic['u1_cut'])
+w['g'] = 0.5 * np.array(ic['u1_cut'])
 
 u_.set_scales(1)
+w_.set_scales(1)
 u_['g'] = 0.1 * np.array(ic['u1_cut'])
+w_['g'] = 0.7 * np.array(ic['u1_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -169,11 +172,11 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
 CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
-N = 169
+N = 49
 particleTracker = particles.particles(N, domain)
 
-every_n_x_sensor = 10
-every_n_y_sensor = 10
+every_n_x_sensor = 20
+every_n_y_sensor = 20
 xn, yn = x[0:128:every_n_x_sensor], z.T[0:128:every_n_y_sensor]
 X, Y = np.meshgrid(xn, yn)
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
@@ -227,7 +230,7 @@ try:
         dt = CFL.compute_dt()
         dt = solver.step(dt)
 
-        particleTracker.step(dt, (u_, w_))
+        particleTracker.step(dt, (u, w))
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
             locs.append(pos)
