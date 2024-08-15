@@ -30,16 +30,22 @@ def P_N(F, particle_locations, x, y, scale=False):
 
     grid_points = np.array([X.flatten(), Y.flatten()]).T
     interpolated_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), points, method='linear')
+    z_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), (x_flatten, y_flatten), method='linear')
 
     Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='linear')
-    if np.isnan(Z_extrapolated).any():
-        Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='nearest')
-    Z_extrapolated = np.nan_to_num(Z_extrapolated, nan=0)
+    nans = np.isnan(Z_extrapolated)
+    if nans.any():
+        inds = np.argmin((x_flatten[:, None] - X[nans]) ** 2 + (y_flatten[:, None] - Y[nans]) ** 2, axis=0)
+        # ... and use its value
+        Z_extrapolated[nans] = z_values[inds]
+        # print("Z values", z_values)
+        # print("NAN", np.isnan(Z_extrapolated).any())
+    # if np.isnan(Z_extrapolated).any():
+    #     Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='nearest')
+    # Z_extrapolated = np.nan_to_num(Z_extrapolated, nan=0)
 
-    F['g'] = Z_extrapolated.reshape((128, 128))
-    # print(F['g'])
-    # F['c'][(X >= N) | (Y >= N)] = 0
-    # F['g'] = sp.interpolate.RectBivariateSpline(x, y, F['g'])
+    F['g'] = Z_extrapolated
+
     if scale:
         F.set_scales(1)
 
@@ -58,16 +64,22 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 
     grid_points = np.array([X.flatten(), Y.flatten()]).T
     interpolated_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), points, method='linear')
+    z_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), (x_flatten, y_flatten), method='linear')
 
     Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='linear')
-    if np.isnan(Z_extrapolated).any():
-        Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='nearest')
-    Z_extrapolated = np.nan_to_num(Z_extrapolated, nan=0)
+    nans = np.isnan(Z_extrapolated)
+    if nans.any():
+        inds = np.argmin((x_flatten[:, None] - X[nans]) ** 2 + (y_flatten[:, None] - Y[nans]) ** 2, axis=0)
+        # ... and use its value
+        Z_extrapolated[nans] = z_values[inds]
+        # print("Z values", z_values)
+        # print("NAN", np.isnan(Z_extrapolated).any())
+    # if np.isnan(Z_extrapolated).any():
+    #     Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='nearest')
+    # Z_extrapolated = np.nan_to_num(Z_extrapolated, nan=0)
 
-    F['g'] = Z_extrapolated.reshape((128, 128))
-    # print(F['g'])
-    # F['c'][(X >= N) | (Y >= N)] = 0
-    # F['g'] = sp.interpolate.RectBivariateSpline(x, y, F['g'])
+    F['g'] = Z_extrapolated
+
     if scale:
         F.set_scales(1)
 
@@ -75,7 +87,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 
 
 # Parameters
-Lx, Lz = 2*np.pi, 2*np.pi
+Lx, Lz = 2 * np.pi, 2 * np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
 stop_sim_time = 10
@@ -123,17 +135,15 @@ solver.stop_sim_time = stop_sim_time
 x, z = domain.all_grids()
 u = solver.state['u']
 u_ = solver.state['u_']
-# uz = solver.state['uz']
 w = solver.state['w']
 w_ = solver.state['w_']
-# wz = solver.state['wz']
 
 u.set_scales(1)
 ic = sp.io.loadmat("ic.m")
 u['g'] = np.array(ic['u1_cut'])
 
 u_.set_scales(1)
-u_['g'] = 0.1*np.array(ic['u1_cut'])
+u_['g'] = 0.1 * np.array(ic['u1_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -144,7 +154,6 @@ solver.stop_sim_time = stop_sim_time
 analysis_tasks = []
 # Analysis
 snapshots = solver.evaluator.add_file_handler('snapshots', sim_dt=0.25, max_writes=50, mode=fh_mode)
-# snapshots.add_system(solver.state)
 snapshots.add_task('p')
 snapshots.add_task('u')
 snapshots.add_task('w')
@@ -158,19 +167,17 @@ analysis_tasks.append(snapshots)
 CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.05,
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
-# CFL.add_velocities(("u_", "w_"))
 
 # Initiate particles (N particles)
-N = 16384
+N = 169
 particleTracker = particles.particles(N, domain)
 
-every_n_x_sensor = 1
-every_n_y_sensor = 1
+every_n_x_sensor = 10
+every_n_y_sensor = 10
 xn, yn = x[0:128:every_n_x_sensor], z.T[0:128:every_n_y_sensor]
 X, Y = np.meshgrid(xn, yn)
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
 init_particle_pos = copy.deepcopy(particleTracker.positions)
-
 
 locs = []
 pos = copy.copy(particleTracker.positions)
@@ -184,7 +191,7 @@ dT_v = problem.domain.new_field(name='dT_v')
 # Flow properties
 flow = flow_tools.GlobalFlowProperty(solver, cadence=10)
 flow.add_property("u*u", name='w2')
-# flow.add_property("u_*u_/10", name='w2')
+
 epochs = []
 u_errors = []
 w_errors = []
@@ -210,9 +217,6 @@ try:
         problem.parameters["driving_v"].args = [dT_v, particleTracker.positions, x, z]
         problem.parameters["driving_v"].original_args = [dT_v, particleTracker.positions, x, z]
 
-        dt = CFL.compute_dt()
-        dt = solver.step(dt)
-
         u_error = np.linalg.norm(ground_truth - estimate)
         w_error = np.linalg.norm(ground_truth_w - estimate_w)
 
@@ -220,14 +224,16 @@ try:
         w_errors.append(w_error)
         epochs.append(solver.sim_time)
 
+        dt = CFL.compute_dt()
+        dt = solver.step(dt)
+
         particleTracker.step(dt, (u_, w_))
-        # print(particleTracker.positions)
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
             locs.append(pos)
             times.append(solver.sim_time)
             savet += savedt
-        if (solver.iteration - 1) % 50 == 0:
+        if (solver.iteration - 1) % 10 == 0:
             print("Norm of u", np.linalg.norm(ground_truth - estimate))
             print("Norm of w", np.linalg.norm(ground_truth_w - estimate_w))
             max_w = np.sqrt(flow.max('w2'))
