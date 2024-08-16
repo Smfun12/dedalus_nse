@@ -124,15 +124,15 @@ w_ = solver.state['w_']
 
 # Initial condition
 u.set_scales(1)
-w.set_scales(1)
+# w.set_scales(1)
 ic = sp.io.loadmat("ic.m")
 u['g'] = np.array(ic['u1_cut'])
-w['g'] = 0.5 * np.array(ic['u1_cut'])
+# w['g'] = 0.5 * np.array(ic['u1_cut'])
 
 u_.set_scales(1)
-w_.set_scales(1)
+# w_.set_scales(1)
 u_['g'] = 0.1 * np.array(ic['u1_cut'])
-w_['g'] = 0.7 * np.array(ic['u1_cut'])
+# w_['g'] = 0.7 * np.array(ic['u1_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -159,7 +159,7 @@ CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
 N = 169
-every_n_sensor = 10
+every_n_sensor = 5
 particleTracker = particles.particles(N, domain)
 
 xn, yn = x[0:128:every_n_sensor], z.T[0:128:every_n_sensor]
