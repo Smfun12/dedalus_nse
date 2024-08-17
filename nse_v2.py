@@ -90,7 +90,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 Lx, Lz = 2 * np.pi, 2 * np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 10
+stop_sim_time = 200
 timestepper = de.timesteppers.RK222
 max_timestep = 1e-2
 dtype = np.float64
@@ -138,15 +138,15 @@ u_ = solver.state['u_']
 w = solver.state['w']
 w_ = solver.state['w_']
 
-w.set_scales(1)
+# w.set_scales(1)
 ic = sp.io.loadmat("ic.m")
 u['g'] = np.array(ic['u1_cut'])
-w['g'] = 0.5 * np.array(ic['u1_cut'])
+# w['g'] = 0.5 * np.array(ic['u1_cut'])
 
 u_.set_scales(1)
-w_.set_scales(1)
+# w_.set_scales(1)
 u_['g'] = 0.1 * np.array(ic['u1_cut'])
-w_['g'] = 0.7 * np.array(ic['u1_cut'])
+# w_['g'] = 0.7 * np.array(ic['u1_cut'])
 
 # Timestepping and output
 dt = 0.125
