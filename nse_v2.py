@@ -73,7 +73,7 @@ def P_N_w(F, x, y, scale=False):
 Lx, Lz = 2 * np.pi, 2 * np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 10
+stop_sim_time = 100
 timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
@@ -124,15 +124,16 @@ w_ = solver.state['w_']
 
 # Initial condition
 u.set_scales(1)
-# w.set_scales(1)
+w.set_scales(1)
 ic = sp.io.loadmat("ic.m")
+ic2 = sp.io.loadmat("ic2.m")
 u['g'] = np.array(ic['u1_cut'])
-# w['g'] = 0.5 * np.array(ic['u1_cut'])
+w['g'] = np.array(ic2['u2_cut'])
 
 u_.set_scales(1)
-# w_.set_scales(1)
-u_['g'] = 0.1 * np.array(ic['u1_cut'])
-# w_['g'] = 0.7 * np.array(ic['u1_cut'])
+w_.set_scales(1)
+u_['g'] = 1 * np.array(ic['u1_cut'])
+w_['g'] = 1 * np.array(ic2['u2_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -159,7 +160,7 @@ CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
 N = 169
-every_n_sensor = 5
+every_n_sensor = 3
 particleTracker = particles.particles(N, domain)
 
 xn, yn = x[0:128:every_n_sensor], z.T[0:128:every_n_sensor]
