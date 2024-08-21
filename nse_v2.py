@@ -159,7 +159,7 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
 CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
-N = 169
+N = 16384
 every_n_sensor = 3
 particleTracker = particles.particles(N, domain)
 
