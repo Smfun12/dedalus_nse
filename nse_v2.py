@@ -90,8 +90,8 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 Lx, Lz = 2 * np.pi, 2 * np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 200
-timestepper = de.timesteppers.RK222
+stop_sim_time = 100
+timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
 
@@ -109,7 +109,7 @@ driving = operators.GeneralFunction(domain, 'g', P_N, args=[])
 driving_v = operators.GeneralFunction(domain, 'g', P_N_w, args=[])
 problem = de.IVP(domain, variables=['p', 'p_', 'u', 'w', 'uz', 'wz', 'u_', 'w_', 'uz_', 'wz_'])
 problem.parameters['nu'] = nu
-problem.parameters['mu'] = 0.5
+problem.parameters['mu'] = 2
 problem.parameters['driving'] = driving
 problem.parameters['driving_v'] = driving_v
 # Nudge solution
@@ -138,15 +138,17 @@ u_ = solver.state['u_']
 w = solver.state['w']
 w_ = solver.state['w_']
 
-# w.set_scales(1)
+u.set_scales(1)
+w.set_scales(1)
 ic = sp.io.loadmat("ic.m")
+ic2 = sp.io.loadmat("ic2.m")
 u['g'] = np.array(ic['u1_cut'])
-# w['g'] = 0.5 * np.array(ic['u1_cut'])
+w['g'] = np.array(ic2['u2_cut'])
 
 u_.set_scales(1)
-# w_.set_scales(1)
-u_['g'] = 0.1 * np.array(ic['u1_cut'])
-# w_['g'] = 0.7 * np.array(ic['u1_cut'])
+w_.set_scales(1)
+u_['g'] = 1 * np.array(ic['u1_cut'])
+w_['g'] = 1 * np.array(ic2['u2_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -172,11 +174,11 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
 CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
-N = 49
+N = 16384
 particleTracker = particles.particles(N, domain)
 
-every_n_x_sensor = 20
-every_n_y_sensor = 20
+every_n_x_sensor = 1
+every_n_y_sensor = 1
 xn, yn = x[0:128:every_n_x_sensor], z.T[0:128:every_n_y_sensor]
 X, Y = np.meshgrid(xn, yn)
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
@@ -193,7 +195,7 @@ dT = problem.domain.new_field(name='dT')
 dT_v = problem.domain.new_field(name='dT_v')
 # Flow properties
 flow = flow_tools.GlobalFlowProperty(solver, cadence=10)
-flow.add_property("u*u", name='w2')
+flow.add_property("u*u/10", name='w2')
 
 epochs = []
 u_errors = []
@@ -203,22 +205,20 @@ try:
     logger.info('Starting main loop')
     start_time = time.time()
     while solver.proceed:
-        u_ = solver.state['u_']
-        u = solver.state['u']
 
-        dT['g'] = solver.state['u_']['g'] - solver.state['u']['g']
+        dT = solver.state['u_'] - solver.state['u']
         ground_truth = solver.state['u']['g']
         estimate = solver.state['u_']['g']
 
-        problem.parameters["driving"].args = [dT, particleTracker.positions, x, z]
-        problem.parameters["driving"].original_args = [dT, particleTracker.positions, x, z]
-
-        dT_v['g'] = solver.state['w_']['g'] - solver.state['w']['g']
+        dT_w = solver.state['w_'] - solver.state['w']
         ground_truth_w = solver.state['w']['g']
         estimate_w = solver.state['w_']['g']
 
-        problem.parameters["driving_v"].args = [dT_v, particleTracker.positions, x, z]
-        problem.parameters["driving_v"].original_args = [dT_v, particleTracker.positions, x, z]
+        problem.parameters["driving"].args = [dT, x, z]
+        problem.parameters["driving"].original_args = [dT, x, z]
+
+        problem.parameters["driving_v"].args = [dT_w, particleTracker.positions, x, z]
+        problem.parameters["driving_v"].original_args = [dT_w, particleTracker.positions, x, z]
 
         u_error = np.linalg.norm(ground_truth - estimate)
         w_error = np.linalg.norm(ground_truth_w - estimate_w)
@@ -237,8 +237,8 @@ try:
             times.append(solver.sim_time)
             savet += savedt
         if (solver.iteration - 1) % 10 == 0:
-            print("Norm of u", np.linalg.norm(ground_truth - estimate))
-            print("Norm of w", np.linalg.norm(ground_truth_w - estimate_w))
+            print("Norm of u error", u_error)
+            print("Norm of w error", w_error)
             max_w = np.sqrt(flow.max('w2'))
             logger.info(
                 'Iteration=%i, Time=%e, dt=%e, max(w)=%f' % (solver.iteration, solver.sim_time, dt, max_w))
