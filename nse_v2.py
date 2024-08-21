@@ -90,7 +90,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 Lx, Lz = 2 * np.pi, 2 * np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 100
+stop_sim_time = 50
 timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
@@ -147,8 +147,8 @@ w['g'] = np.array(ic2['u2_cut'])
 
 u_.set_scales(1)
 w_.set_scales(1)
-u_['g'] = 1 * np.array(ic['u1_cut'])
-w_['g'] = 1 * np.array(ic2['u2_cut'])
+u_['g'] = 0.5 * np.array(ic['u1_cut'])
+w_['g'] = 0.7 * np.array(ic2['u2_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -174,11 +174,11 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
 CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
-N = 16384
+N = 676
 particleTracker = particles.particles(N, domain)
 
-every_n_x_sensor = 1
-every_n_y_sensor = 1
+every_n_x_sensor = 5
+every_n_y_sensor = 5
 xn, yn = x[0:128:every_n_x_sensor], z.T[0:128:every_n_y_sensor]
 X, Y = np.meshgrid(xn, yn)
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
@@ -214,8 +214,8 @@ try:
         ground_truth_w = solver.state['w']['g']
         estimate_w = solver.state['w_']['g']
 
-        problem.parameters["driving"].args = [dT, x, z]
-        problem.parameters["driving"].original_args = [dT, x, z]
+        problem.parameters["driving"].args = [dT, particleTracker.positions, x, z]
+        problem.parameters["driving"].original_args = [dT, particleTracker.positions, x, z]
 
         problem.parameters["driving_v"].args = [dT_w, particleTracker.positions, x, z]
         problem.parameters["driving_v"].original_args = [dT_w, particleTracker.positions, x, z]
