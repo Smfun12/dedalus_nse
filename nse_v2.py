@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import random
 import time
@@ -21,7 +22,7 @@ def P_N(F, x, y, scale=False):
     x_flatten = x.flatten()
     y_flatten = y.flatten()
 
-    x_sensors, y_sensors = x_flatten[0:128:every_n_sensor], y_flatten[0:128:every_n_sensor]
+    x_sensors, y_sensors = x_flatten[0:Nx:every_n_x_sensor], y_flatten[0:Nz:every_n_y_sensor]
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
                                                     method='linear')
@@ -46,7 +47,7 @@ def P_N_w(F, x, y, scale=False):
     x_flatten = x.flatten()
     y_flatten = y.flatten()
 
-    x_sensors, y_sensors = x_flatten[0:128:every_n_sensor], y_flatten[0:128:every_n_sensor]
+    x_sensors, y_sensors = x_flatten[0:Nx:every_n_x_sensor], y_flatten[0:Nz:every_n_y_sensor]
 
     # Interpolate from grid data onto target points
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
@@ -159,11 +160,12 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
 CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
-N = 16384
-every_n_sensor = 5
+every_n_x_sensor = 5
+every_n_y_sensor = 5
+N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz / every_n_y_sensor)
 particleTracker = particles.particles(N, domain)
 
-xn, yn = x[0:128:every_n_sensor], z.T[0:128:every_n_sensor]
+xn, yn = x[0:Nx:every_n_x_sensor], z.T[0:Nz:every_n_y_sensor]
 X, Y = np.meshgrid(xn, yn)
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
 
@@ -204,6 +206,9 @@ try:
 
         u_error = np.linalg.norm(ground_truth - estimate)
         w_error = np.linalg.norm(ground_truth_w - estimate_w)
+
+        if np.isnan(u_error) or np.isnan(w_error):
+            break
 
         u_errors.append(u_error)
         w_errors.append(w_error)
