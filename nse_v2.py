@@ -22,30 +22,43 @@ logger = logging.getLogger(__name__)
 def P_N(F, particle_locations, x, y, scale=False):
     x_flatten = x.flatten()
     y_flatten = y.flatten()
-    x_sensors = particle_locations[:, 0].flatten().T
-    y_sensors = particle_locations[:, 1].flatten().T
 
     X, Y = np.meshgrid(x_flatten, y_flatten, indexing='ij')
+    grid_points = np.vstack([X.flatten(), Y.flatten()]).T
+    points = copy.deepcopy(particle_locations)
+    values = F['g'].flatten()
 
-    points = np.array(list(zip(x_sensors, y_sensors)))
+    Z_inter = sp.interpolate.griddata(grid_points, values, points, method='linear')
+    if np.isnan(Z_inter).any():
+        nan_mask = np.isnan(Z_inter)
 
-    grid_points = np.array([X.flatten(), Y.flatten()]).T
-    interpolated_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), points, method='linear')
-    z_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), (x_flatten, y_flatten), method='linear')
+        nan_points = points[nan_mask]
 
-    Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='linear')
-    nans = np.isnan(Z_extrapolated)
-    if nans.any():
-        inds = np.argmin((x_flatten[:, None] - X[nans]) ** 2 + (y_flatten[:, None] - Y[nans]) ** 2, axis=0)
-        # ... and use its value
-        Z_extrapolated[nans] = z_values[inds]
-        # print("Z values", z_values)
-        # print("NAN", np.isnan(Z_extrapolated).any())
-    # if np.isnan(Z_extrapolated).any():
-    #     Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='nearest')
-    # Z_extrapolated = np.nan_to_num(Z_extrapolated, nan=0)
+        # Interpolate NaN points using nearest method
+        values_nearest = sp.interpolate.griddata(grid_points, values, nan_points, method='nearest')
+        Z_inter[nan_mask] = values_nearest
 
-    F['g'] = Z_extrapolated
+    if np.isnan(Z_inter).any():
+        print("nan VALUE!!!")
+    interpolated_values = Z_inter
+    grid_values_cubic = sp.interpolate.griddata(points, interpolated_values, grid_points, method='linear')
+    # rbf = sp.interpolate.RBFInterpolator(in)
+    if np.isnan(grid_values_cubic).any():
+        Z = grid_values_cubic.reshape(Nx, Nz)
+
+        nan_mask = np.isnan(Z)
+
+        nan_points = np.vstack([X[nan_mask], Y[nan_mask]]).T
+
+        # Interpolate NaN points using nearest method
+        values_nearest = sp.interpolate.griddata(points, interpolated_values, nan_points, method='nearest')
+
+        # Replace NaN values in Z with nearest neighbor interpolated values
+        Z[nan_mask] = values_nearest
+
+        F['g'] = Z
+    else:
+        F['g'] = grid_values_cubic
 
     if scale:
         F.set_scales(1)
@@ -56,30 +69,42 @@ def P_N(F, particle_locations, x, y, scale=False):
 def P_N_w(F, particle_locations, x, y, scale=False):
     x_flatten = x.flatten()
     y_flatten = y.flatten()
-    x_sensors = particle_locations[:, 0].flatten().T
-    y_sensors = particle_locations[:, 1].flatten().T
-    # x_sensors, y_sensors = np.unique(x_sensors), np.unique(y_sensors)
+
     X, Y = np.meshgrid(x_flatten, y_flatten, indexing='ij')
+    grid_points = np.vstack([X.flatten(), Y.flatten()]).T
+    points = copy.deepcopy(particle_locations)
+    values = F['g'].flatten()
 
-    points = np.array(list(zip(x_sensors, y_sensors)))
+    Z_inter = sp.interpolate.griddata(grid_points, values, points, method='linear')
+    if np.isnan(Z_inter).any():
+        nan_mask = np.isnan(Z_inter)
 
-    grid_points = np.array([X.flatten(), Y.flatten()]).T
-    interpolated_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), points, method='linear')
-    z_values = sp.interpolate.griddata(grid_points, F['g'].flatten(), (x_flatten, y_flatten), method='linear')
+        nan_points = points[nan_mask]
 
-    Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='linear')
-    nans = np.isnan(Z_extrapolated)
-    if nans.any():
-        inds = np.argmin((x_flatten[:, None] - X[nans]) ** 2 + (y_flatten[:, None] - Y[nans]) ** 2, axis=0)
-        # ... and use its value
-        Z_extrapolated[nans] = z_values[inds]
-        # print("Z values", z_values)
-        # print("NAN", np.isnan(Z_extrapolated).any())
-    # if np.isnan(Z_extrapolated).any():
-    #     Z_extrapolated = sp.interpolate.griddata(points, interpolated_values, (X, Y), method='nearest')
-    # Z_extrapolated = np.nan_to_num(Z_extrapolated, nan=0)
+        # Interpolate NaN points using nearest method
+        values_nearest = sp.interpolate.griddata(grid_points, values, nan_points, method='nearest')
+        Z_inter[nan_mask] = values_nearest
 
-    F['g'] = Z_extrapolated
+    if np.isnan(Z_inter).any():
+        print("nan VALUE!!!")
+    interpolated_values = Z_inter
+    grid_values_cubic = sp.interpolate.griddata(points, interpolated_values, grid_points, method='linear')
+    if np.isnan(grid_values_cubic).any():
+        Z = grid_values_cubic.reshape(Nx, Nz)
+
+        nan_mask = np.isnan(Z)
+
+        nan_points = np.vstack([X[nan_mask], Y[nan_mask]]).T
+
+        # Interpolate NaN points using nearest method
+        values_nearest = sp.interpolate.griddata(points, interpolated_values, nan_points, method='nearest')
+
+        # Replace NaN values in Z with nearest neighbor interpolated values
+        Z[nan_mask] = values_nearest
+
+        F['g'] = Z
+    else:
+        F['g'] = grid_values_cubic
 
     if scale:
         F.set_scales(1)
@@ -91,7 +116,7 @@ def P_N_w(F, particle_locations, x, y, scale=False):
 Lx, Lz = 2 * np.pi, 2 * np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 50
+stop_sim_time = 10
 timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
@@ -174,7 +199,6 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
 
-
 every_n_x_sensor = 20
 every_n_y_sensor = 20
 N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz / every_n_y_sensor)
@@ -182,9 +206,12 @@ N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz / every_n_y_sensor)
 # Initiate particles (N particles)
 particleTracker = particles.particles(N, domain)
 
-xn, yn = x[0:Nx:every_n_x_sensor], z.T[0:Nz:every_n_y_sensor]
+xn, yn = np.squeeze(x[0:Nx:every_n_x_sensor]), np.squeeze(z.T[0:Nz:every_n_y_sensor])
 X, Y = np.meshgrid(xn, yn)
-particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
+
+# particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
+particleTracker.positions = np.vstack([X.ravel(), Y.ravel()]).T
+# particleTracker.positions = np.random.rand(N, 2)*np.pi - np.pi
 init_particle_pos = copy.deepcopy(particleTracker.positions)
 
 locs = []
@@ -226,8 +253,8 @@ try:
         u_error = np.linalg.norm(ground_truth - estimate)
         w_error = np.linalg.norm(ground_truth_w - estimate_w)
 
-        if np.isnan(u_error) or np.isnan(w_error):
-            break
+        # if np.isnan(u_error) or np.isnan(w_error):
+        #     break
         u_errors.append(u_error)
         w_errors.append(w_error)
         epochs.append(solver.sim_time)
