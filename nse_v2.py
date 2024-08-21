@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import random
 import time
@@ -173,13 +174,15 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
 
+
+every_n_x_sensor = 20
+every_n_y_sensor = 20
+N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz / every_n_y_sensor)
+
 # Initiate particles (N particles)
-N = 676
 particleTracker = particles.particles(N, domain)
 
-every_n_x_sensor = 5
-every_n_y_sensor = 5
-xn, yn = x[0:128:every_n_x_sensor], z.T[0:128:every_n_y_sensor]
+xn, yn = x[0:Nx:every_n_x_sensor], z.T[0:Nz:every_n_y_sensor]
 X, Y = np.meshgrid(xn, yn)
 particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
 init_particle_pos = copy.deepcopy(particleTracker.positions)
@@ -223,6 +226,8 @@ try:
         u_error = np.linalg.norm(ground_truth - estimate)
         w_error = np.linalg.norm(ground_truth_w - estimate_w)
 
+        if np.isnan(u_error) or np.isnan(w_error):
+            break
         u_errors.append(u_error)
         w_errors.append(w_error)
         epochs.append(solver.sim_time)
