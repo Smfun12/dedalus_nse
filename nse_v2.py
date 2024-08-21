@@ -19,14 +19,21 @@ from scipy.linalg import solve
 logger = logging.getLogger(__name__)
 
 
-def P_N(F, particle_locations, x, y, scale=False):
+def P_N(u_hat, u_obs, particle_locations, x, y, scale=False):
     x_flatten = x.flatten()
     y_flatten = y.flatten()
+
+    interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), u_hat['g'], bounds_error=False,
+                                                    fill_value=None,
+                                                    method='linear')
+
+    x_grid, y_grid = np.meshgrid(x_flatten, y_flatten, indexing='ij')
+    u_hat_inter = interp((x_grid, y_grid))
 
     X, Y = np.meshgrid(x_flatten, y_flatten, indexing='ij')
     grid_points = np.vstack([X.flatten(), Y.flatten()]).T
     points = copy.deepcopy(particle_locations)
-    values = F['g'].flatten()
+    values = u_obs['g'].flatten()
 
     Z_inter = sp.interpolate.griddata(grid_points, values, points, method='linear')
     if np.isnan(Z_inter).any():
@@ -41,12 +48,12 @@ def P_N(F, particle_locations, x, y, scale=False):
     if np.isnan(Z_inter).any():
         print("nan VALUE!!!")
     interpolated_values = Z_inter
-    grid_values_cubic = sp.interpolate.griddata(points, interpolated_values, grid_points, method='linear')
+    u_obs_inter = sp.interpolate.griddata(points, interpolated_values, grid_points, method='linear')
     # rbf = sp.interpolate.RBFInterpolator(in)
-    if np.isnan(grid_values_cubic).any():
-        Z = grid_values_cubic.reshape(Nx, Nz)
+    if np.isnan(u_obs_inter).any():
+        u_obs_inter = u_obs_inter.reshape(Nx, Nz)
 
-        nan_mask = np.isnan(Z)
+        nan_mask = np.isnan(u_obs_inter)
 
         nan_points = np.vstack([X[nan_mask], Y[nan_mask]]).T
 
@@ -54,26 +61,33 @@ def P_N(F, particle_locations, x, y, scale=False):
         values_nearest = sp.interpolate.griddata(points, interpolated_values, nan_points, method='nearest')
 
         # Replace NaN values in Z with nearest neighbor interpolated values
-        Z[nan_mask] = values_nearest
+        u_obs_inter[nan_mask] = values_nearest
 
-        F['g'] = Z
+        result = u_hat_inter - u_obs_inter
     else:
-        F['g'] = grid_values_cubic
+        result = u_hat_inter - u_obs_inter
 
-    if scale:
-        F.set_scales(1)
+    # if scale:
+    #     F.set_scales(1)
 
-    return F['g']
+    return result
 
 
-def P_N_w(F, particle_locations, x, y, scale=False):
+def P_N_w(u_hat, u_obs, particle_locations, x, y, scale=False):
     x_flatten = x.flatten()
     y_flatten = y.flatten()
+
+    interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), u_hat['g'], bounds_error=False,
+                                                    fill_value=None,
+                                                    method='linear')
+
+    x_grid, y_grid = np.meshgrid(x_flatten, y_flatten, indexing='ij')
+    u_hat_inter = interp((x_grid, y_grid))
 
     X, Y = np.meshgrid(x_flatten, y_flatten, indexing='ij')
     grid_points = np.vstack([X.flatten(), Y.flatten()]).T
     points = copy.deepcopy(particle_locations)
-    values = F['g'].flatten()
+    values = u_obs['g'].flatten()
 
     Z_inter = sp.interpolate.griddata(grid_points, values, points, method='linear')
     if np.isnan(Z_inter).any():
@@ -88,11 +102,12 @@ def P_N_w(F, particle_locations, x, y, scale=False):
     if np.isnan(Z_inter).any():
         print("nan VALUE!!!")
     interpolated_values = Z_inter
-    grid_values_cubic = sp.interpolate.griddata(points, interpolated_values, grid_points, method='linear')
-    if np.isnan(grid_values_cubic).any():
-        Z = grid_values_cubic.reshape(Nx, Nz)
+    u_obs_inter = sp.interpolate.griddata(points, interpolated_values, grid_points, method='linear')
+    # rbf = sp.interpolate.RBFInterpolator(in)
+    if np.isnan(u_obs_inter).any():
+        u_obs_inter = u_obs_inter.reshape(Nx, Nz)
 
-        nan_mask = np.isnan(Z)
+        nan_mask = np.isnan(u_obs_inter)
 
         nan_points = np.vstack([X[nan_mask], Y[nan_mask]]).T
 
@@ -100,16 +115,16 @@ def P_N_w(F, particle_locations, x, y, scale=False):
         values_nearest = sp.interpolate.griddata(points, interpolated_values, nan_points, method='nearest')
 
         # Replace NaN values in Z with nearest neighbor interpolated values
-        Z[nan_mask] = values_nearest
+        u_obs_inter[nan_mask] = values_nearest
 
-        F['g'] = Z
+        result = u_hat_inter - u_obs_inter
     else:
-        F['g'] = grid_values_cubic
+        result = u_hat_inter - u_obs_inter
 
-    if scale:
-        F.set_scales(1)
+    # if scale:
+    #     F.set_scales(1)
 
-    return F['g']
+    return result
 
 
 # Parameters
@@ -199,8 +214,8 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
 
-every_n_x_sensor = 20
-every_n_y_sensor = 20
+every_n_x_sensor = 5
+every_n_y_sensor = 5
 N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz / every_n_y_sensor)
 
 # Initiate particles (N particles)
@@ -244,11 +259,13 @@ try:
         ground_truth_w = solver.state['w']['g']
         estimate_w = solver.state['w_']['g']
 
-        problem.parameters["driving"].args = [dT, particleTracker.positions, x, z]
-        problem.parameters["driving"].original_args = [dT, particleTracker.positions, x, z]
+        problem.parameters["driving"].args = [solver.state['u_'], solver.state['u'], particleTracker.positions, x, z]
+        problem.parameters["driving"].original_args = [solver.state['u_'], solver.state['u'], particleTracker.positions,
+                                                       x, z]
 
-        problem.parameters["driving_v"].args = [dT_w, particleTracker.positions, x, z]
-        problem.parameters["driving_v"].original_args = [dT_w, particleTracker.positions, x, z]
+        problem.parameters["driving_v"].args = [solver.state['w_'], solver.state['w'], particleTracker.positions, x, z]
+        problem.parameters["driving_v"].original_args = [solver.state['w_'], solver.state['w'],
+                                                         particleTracker.positions, x, z]
 
         u_error = np.linalg.norm(ground_truth - estimate)
         w_error = np.linalg.norm(ground_truth_w - estimate_w)
