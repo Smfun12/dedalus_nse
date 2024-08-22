@@ -18,63 +18,64 @@ import particles
 logger = logging.getLogger(__name__)
 
 
-def P_N(F, x, y, scale=False):
+def P_N(u_hat, u_obs, x, y, scale=False):
+
     x_flatten = x.flatten()
     y_flatten = y.flatten()
 
-    x_sensors, y_sensors = x_flatten[0:Nx:every_n_x_sensor], y_flatten[0:Nz:every_n_y_sensor]
-    # Interpolate from grid data onto target points
-    interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
-                                                    method='linear')
-    xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
-    interpolated_points = interp((xg, yg))
-    data = interpolated_points
-    # Interpolate from target points onto full-grid
-    interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
+    interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), u_hat['g'], bounds_error=False,
+                                                    fill_value=None,
                                                     method='linear')
 
-    xf, yf = np.meshgrid(x_flatten, y_flatten, indexing='ij')
-    interp1 = interp((xf, yf))
-    F['g'] = interp1
+    x_grid, y_grid = np.meshgrid(x_flatten, y_flatten, indexing='ij')
+    u_hat_inter = interp((x_grid, y_grid))
 
-    if scale:
-        F.set_scales(1)
+    x_sensors, y_sensors = x_flatten[0:128:every_n_x_sensor], y_flatten[0:128:every_n_y_sensor]
 
-    return F['g']
+    # xs, ys = np.meshgrid(x_sensors, y_sensors, indexing='ij')
+    sensor_values = u_obs['g'][0:128:every_n_x_sensor, 0:128:every_n_x_sensor]
+    interp_obs = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), sensor_values, bounds_error=False,
+                                                        fill_value=None,
+                                                        method='linear')
+    u_obs_inter = interp_obs((x_grid, y_grid))
+    # if scale:
+    #     F.set_scales(1)
+    result = u_hat_inter - u_obs_inter
+    return result
 
 
-def P_N_w(F, x, y, scale=False):
+def P_N_w(u_hat, u_obs,  x, y, scale=False):
+
     x_flatten = x.flatten()
     y_flatten = y.flatten()
 
-    x_sensors, y_sensors = x_flatten[0:Nx:every_n_x_sensor], y_flatten[0:Nz:every_n_y_sensor]
-
-    # Interpolate from grid data onto target points
-    interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), F['g'], bounds_error=False, fill_value=None,
-                                                    method='linear')
-    xg, yg = np.meshgrid(x_sensors, y_sensors, indexing='ij')
-    interpolated_points = interp((xg, yg))
-    data = interpolated_points
-
-    # Interpolate from target points onto full-grid
-    interp = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), data, bounds_error=False, fill_value=None,
+    interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), u_hat['g'], bounds_error=False,
+                                                    fill_value=None,
                                                     method='linear')
 
-    xf, yf = np.meshgrid(x_flatten, y_flatten, indexing='ij')
-    interp1 = interp((xf, yf))
-    F['g'] = interp1
+    x_grid, y_grid = np.meshgrid(x_flatten, y_flatten, indexing='ij')
+    u_hat_inter = interp((x_grid, y_grid))
 
-    if scale:
-        F.set_scales(1)
+    x_sensors, y_sensors = x_flatten[0:128:every_n_x_sensor], y_flatten[0:128:every_n_y_sensor]
 
-    return F['g']
+    # xs, ys = np.meshgrid(x_sensors, y_sensors, indexing='ij')
+    sensor_values = u_obs['g'][0:128:every_n_x_sensor, 0:128:every_n_y_sensor]
+    interp_obs = sp.interpolate.RegularGridInterpolator((x_sensors, y_sensors), sensor_values, bounds_error=False,
+                                                        fill_value=None,
+                                                        method='linear')
+    u_obs_inter = interp_obs((x_grid, y_grid))
+    # if scale:
+    #     F.set_scales(1)
+    result = u_hat_inter - u_obs_inter
+    return result
+
 
 
 # Parameters
 Lx, Lz = 2 * np.pi, 2 * np.pi
 Nx, Nz = 128, 128
 Reynolds = 5e4
-stop_sim_time = 50
+stop_sim_time = 200
 timestepper = de.timesteppers.RK111
 max_timestep = 1e-2
 dtype = np.float64
@@ -133,8 +134,8 @@ w['g'] = np.array(ic2['u2_cut'])
 
 u_.set_scales(1)
 w_.set_scales(1)
-u_['g'] = 0.5 * np.array(ic['u1_cut'])
-w_['g'] = 0.7 * np.array(ic2['u2_cut'])
+u_['g'] = 0.9 * np.array(ic['u1_cut'])
+w_['g'] = 0.9 * np.array(ic2['u2_cut'])
 
 # Timestepping and output
 dt = 0.125
@@ -160,8 +161,8 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
 CFL.add_velocities(("u", "w"))
 
 # Initiate particles (N particles)
-every_n_x_sensor = 5
-every_n_y_sensor = 5
+every_n_x_sensor = 3
+every_n_y_sensor = 3
 N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz / every_n_y_sensor)
 particleTracker = particles.particles(N, domain)
 
@@ -198,17 +199,14 @@ try:
         ground_truth_w = solver.state['w']['g']
         estimate_w = solver.state['w_']['g']
 
-        problem.parameters["driving"].args = [dT, x, z]
-        problem.parameters["driving"].original_args = [dT, x, z]
+        problem.parameters["driving"].args = [solver.state['u_'], solver.state['u'], x, z]
+        problem.parameters["driving"].original_args = [solver.state['u_'], solver.state['u'], x, z]
 
-        problem.parameters["driving_v"].args = [dT_w, x, z]
-        problem.parameters["driving_v"].original_args = [dT_w, x, z]
+        problem.parameters["driving_v"].args = [solver.state['w_'], solver.state['w'], x, z]
+        problem.parameters["driving_v"].original_args = [solver.state['w_'], solver.state['w'], x, z]
 
         u_error = np.linalg.norm(ground_truth - estimate)
         w_error = np.linalg.norm(ground_truth_w - estimate_w)
-
-        if np.isnan(u_error) or np.isnan(w_error):
-            break
 
         u_errors.append(u_error)
         w_errors.append(w_error)
