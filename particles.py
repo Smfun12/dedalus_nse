@@ -1,4 +1,5 @@
 import numpy as np
+import random
 from mpi4py import MPI
 
 comm = MPI.COMM_WORLD
@@ -147,11 +148,25 @@ class particles:
                 self.fluids_vel[:, coord] = self.interpolate(velocities[coord],
                                                              (self.positions[:, 0], self.positions[:, 1]))
 
-    def step(self, dt, velocities):
+    def step(self, dt, velocities, Lx, Nx):
         self.getFluidVel(velocities)
 
+        choice = random.randint(1, 5)
+        grid_step = Lx/(Nx-1)
+        if choice == 1:
+            v1, v2 = 0, grid_step
+        elif choice == 2:
+            v1, v2 = 0, -grid_step
+        elif choice == 3:
+            v1,v2 = grid_step, 0
+        elif choice == 4:
+            v1, v2 = -grid_step, 0
+        else:
+            v1, v2 = 0
+
+        random_move = np.array([[v1], [v2]])
         # Move particles
-        self.positions += dt * self.fluids_vel
+        self.positions += dt * self.fluids_vel + random_move
         # Apply BCs on the particle positions
         for coord in range(self.dim):
             if (type(self.basis_objects[coord]).__name__ == 'Fourier' or type(

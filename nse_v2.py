@@ -14,7 +14,6 @@ from dedalus.extras import flow_tools
 from dedalus.tools import post
 import scipy as sp
 import particles
-from scipy.linalg import solve
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +48,9 @@ def P_N(u_hat, u_obs, particle_locations, x, y, scale=False):
         print("nan VALUE!!!")
     interpolated_values = Z_inter
     u_obs_inter = sp.interpolate.griddata(points, interpolated_values, grid_points, method='linear')
+    u_obs_inter = u_obs_inter.reshape(Nx, Nz)
     # rbf = sp.interpolate.RBFInterpolator(in)
     if np.isnan(u_obs_inter).any():
-        u_obs_inter = u_obs_inter.reshape(Nx, Nz)
 
         nan_mask = np.isnan(u_obs_inter)
 
@@ -104,8 +103,8 @@ def P_N_w(u_hat, u_obs, particle_locations, x, y, scale=False):
     interpolated_values = Z_inter
     u_obs_inter = sp.interpolate.griddata(points, interpolated_values, grid_points, method='linear')
     # rbf = sp.interpolate.RBFInterpolator(in)
+    u_obs_inter = u_obs_inter.reshape(Nx, Nz)
     if np.isnan(u_obs_inter).any():
-        u_obs_inter = u_obs_inter.reshape(Nx, Nz)
 
         nan_mask = np.isnan(u_obs_inter)
 
@@ -214,8 +213,8 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
 
-every_n_x_sensor = 5
-every_n_y_sensor = 5
+every_n_x_sensor = 1
+every_n_y_sensor = 1
 N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz / every_n_y_sensor)
 
 # Initiate particles (N particles)
@@ -267,11 +266,9 @@ try:
         problem.parameters["driving_v"].original_args = [solver.state['w_'], solver.state['w'],
                                                          particleTracker.positions, x, z]
 
-        u_error = np.linalg.norm(ground_truth - estimate)
-        w_error = np.linalg.norm(ground_truth_w - estimate_w)
+        u_error = np.linalg.norm(ground_truth - estimate) / np.linalg.norm(ground_truth)
+        w_error = np.linalg.norm(ground_truth_w - estimate_w) / np.linalg.norm(ground_truth_w)
 
-        # if np.isnan(u_error) or np.isnan(w_error):
-        #     break
         u_errors.append(u_error)
         w_errors.append(w_error)
         epochs.append(solver.sim_time)
