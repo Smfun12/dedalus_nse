@@ -4,6 +4,7 @@ frames/
 frames_multiple/
 frames_nudging/
 frames_nudging_0.5/
+.ipynb_checkpoints
 particles_frames/
 venv/
 __pycache__/
