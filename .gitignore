@@ -6,6 +6,8 @@ frames_nudging/
 frames_nudging_0.5/
 .ipynb_checkpoints
 particles_frames/
+notebooks/*.h5
+notebooks/snapshots_s4/
 venv/
 __pycache__/
 output_video.mp4

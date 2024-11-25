@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 every_n_sensor = 1
 
 # Parameters
-Lx, Lz = 2, 2
+Lx, Lz = 2*np.pi, 2*np.pi
 Nx, Nz = 128, 128
 Reynolds = 1e4
 stop_sim_time = 10
@@ -21,8 +21,8 @@ max_timestep = 1e-2
 dtype = np.float64
 
 # Bases
-x_basis = de.Fourier('x', Nx, interval=(-1, 1), dealias=1)
-z_basis = de.Fourier('z', Nz, interval=(-1, 1), dealias=1)
+x_basis = de.Fourier('x', Nx, interval=(-np.pi, np.pi), dealias=3/2)
+z_basis = de.Fourier('z', Nz, interval=(-np.pi, np.pi), dealias=3/2)
 domain = de.Domain([x_basis, z_basis], grid_dtype=np.float64)
 
 # Substitutions
@@ -54,23 +54,10 @@ wz = solver.state['wz']
 
 u.set_scales(1)
 # Initial conditions
-gshape = domain.dist.grid_layout.global_shape(scales=1)
-slices = domain.dist.grid_layout.slices(scales=1)
-rand = np.random.RandomState(seed=42)
-noise = rand.standard_normal(gshape)[slices]
-
-# Linear background + perturbations damped at walls
-zb, zt = z_basis.interval
-pert = 1e-3 * noise * (zt - z) * (z - zb)
-u['g'] = pert
-# u['g'] = uinit
-# w['g'] = amp*np.sin(2.0*np.pi*x/Lx)*np.exp(-(z*z)/(sigma*sigma))
-# u.differentiate('z',out=uz)
-# w.differentiate('z',out=wz)
-# u['g'] = u_init
-# u['g'] = 0.1 * np.sin(2 * np.pi * x / Lx) * np.exp(-z ** 2 / 0.01)
-# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z - 0.5) ** 2 / 0.01)
-# u['g'] += 0.1 * np.sin(2 * np.pi * (x - 0.5) / Lx) * np.exp(-(z + 0.5) ** 2 / 0.01)
+x, z = domain.all_grids()
+X, Z = np.meshgrid(x,z)
+u['g'] = 0.05*(-np.sin(X)*np.cos(Z))
+w['g'] = 0.05*np.cos(X)*np.sin(Z)
 
 
 # Timestepping and output
@@ -86,7 +73,7 @@ snapshots = solver.evaluator.add_file_handler('snapshots', sim_dt=0.25, max_writ
 snapshots.add_task('p')
 snapshots.add_task('u')
 snapshots.add_task('w')
-
+snapshots.add_task(w.differentiate(x=1) - u.differentiate(z=1), name='vorticity')
 analysis_tasks.append(snapshots)
 
 # CFL

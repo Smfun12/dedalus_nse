@@ -164,7 +164,7 @@ class particles:
                 self.positions[:, coord] = np.clip(self.positions[:, coord], self.coordBoundaries[coord][0],
                                                    self.coordBoundaries[coord][1])
 
-    def moveParticles(self, positions, p, velocitites):
+    def moveParticles(self, positions, p, velocities):
         match p.sensor_type:
             case "Creeps":
                 for i in range(positions.shape[0]):
@@ -187,21 +187,10 @@ class particles:
                 positions += p.dt*velocities
             case "Lcreeps":
                 for i in range(positions.shape[0]):
-                    choice = random.randint(1, 5)
-                    grid_step = p.Lx/(p.Nx-1)
-                    if choice == 1:
-                        v1, v2 = 0, grid_step
-                    elif choice == 2:
-                        v1, v2 = 0, -grid_step
-                    elif choice == 3:
-                        v1,v2 = grid_step, 0
-                    elif choice == 4:
-                        v1, v2 = -grid_step, 0
-                    else:
-                        v1, v2 = 0, 0
-
-                    random_move = np.array([[v1, v2]])
-                    positions[i, :] += p.dt * velocities[i, :] + random_move.reshape(2)
+                    x_noise = -1 + 2*random.random()
+                    y_noise = -1 + 2*random.random()
+                    random_move = np.array([[x_noise, y_noise]])
+                    positions[i, :] += p.dt * (velocities[i, :] + random_move.reshape(2)*p.amplitude)
         return positions
         
 

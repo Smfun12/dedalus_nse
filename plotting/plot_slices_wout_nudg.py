@@ -27,14 +27,15 @@ def main(filename, start, count, output):
 
     # Plot settings
     # tasks = ['p']
-    tasks = ['p', 'u', 'w']
+    # tasks = ['p', 'u', 'w', "vorticity"]
+    tasks = ['p', "vorticity"]
     scale = 2.5
     dpi = 100
     title_func = lambda sim_time: 't = {:.3f}'.format(sim_time)
     savename_func = lambda write: 'write_{:06}.png'.format(write)
     # Layout
-    nrows, ncols = 3, 1
-    image = plot_tools.Box(3, 1)
+    nrows, ncols = 2, 1
+    image = plot_tools.Box(2, 1)
     pad = plot_tools.Frame(0.2, 0.2, 0.1, 0.1)
     margin = plot_tools.Frame(0.3, 0.2, 0.1, 0.1)
 

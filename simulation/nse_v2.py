@@ -3,6 +3,7 @@ import math
 import os
 import random
 import time
+from dataclasses import dataclass, field
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,7 +14,8 @@ import logging
 from dedalus.extras import flow_tools
 from dedalus.tools import post
 import scipy as sp
-import particles
+from particles import particles
+from utils.interpolation import *
 
 @dataclass
 class SystemParameters:
@@ -22,15 +24,16 @@ class SystemParameters:
     Nz: int
     Lx: int
     Lz: int
+    amplitude: int
     sensor_type: str='Eulerian'
 
 logger = logging.getLogger(__name__)
 
 # Parameters
 Lx, Lz = 2 * np.pi, 2 * np.pi
-Nx, Nz = 128, 128
+Nx, Nz = 512, 512
 Reynolds = 2000
-stop_sim_time = 4
+stop_sim_time = 50
 timestepper = de.timesteppers.RK222
 max_timestep = 1e-2
 dtype = np.float64
@@ -85,15 +88,16 @@ w.set_scales(1)
 # u['g'] = np.array(ic['u1_cut'])
 # w['g'] = np.array(ic2['u2_cut'])
 X, Z = np.meshgrid(x,z)
-u['g'] = -np.cos(X)*np.sin(Y)
-w['g'] = np.sin(X)*np.cos(Y)
+
+u['g'] = 0.05*(-np.sin(X)*np.cos(Z)).T
+w['g'] = 0.05*(np.cos(X)*np.sin(Z)).T
 
 u_.set_scales(1)
 w_.set_scales(1)
 # u_['g'] = 0.5 * np.array(ic['u1_cut'])
 # w_['g'] = 0.7 * np.array(ic2['u2_cut'])
-u_['g'] = np.zeros((Nx, Nz))
-w_['g'] = np.zeros((Nx, Nz))
+u_['g'] = np.zeros((Nx, Nz//4))
+w_['g'] = np.zeros((Nx, Nz//4))
 
 
 # Timestepping and output
@@ -119,20 +123,9 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
 
-every_n_x_sensor = 5
-every_n_y_sensor = 5
-N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz / every_n_y_sensor)
-
-# Initiate particles (N particles)
-particleTracker = particles.particles(N, domain)
-
-xn, yn = np.squeeze(x[0:Nx:every_n_x_sensor]), np.squeeze(z.T[0:Nz:every_n_y_sensor])
-X, Y = np.meshgrid(xn, yn)
-
-# particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
-particleTracker.positions = np.vstack([X.ravel(), Y.ravel()]).T
-# particleTracker.positions = np.random.rand(N, 2)*np.pi - np.pi
-init_particle_pos = copy.deepcopy(particleTracker.positions)
+N = 5000
+particleTracker = particles(N,domain)
+particleTracker.positions = np.random.uniform(-np.pi, np.pi, 2*N).reshape(-1,2)
 
 locs = []
 pos = copy.copy(particleTracker.positions)
@@ -151,7 +144,7 @@ epochs = []
 u_errors = []
 w_errors = []
 
-parameters = SystemParameters(dt, Nx, Nz, Lx, Lz)
+parameters = SystemParameters(dt, Nx, Nz, Lx, Lz, 0.5)
 
 # Main loop
 try:
@@ -159,20 +152,24 @@ try:
     start_time = time.time()
     while solver.proceed:
 
-        dT = solver.state['u_'] - solver.state['u']
-        ground_truth = solver.state['u']['g']
-        estimate = solver.state['u_']['g']
+        u_ = solver.state['u_']
+        u = solver.state['u']
+        dT = u_ - u
+        ground_truth = u['g']
+        estimate = u_['g']
 
-        dT_w = solver.state['w_'] - solver.state['w']
-        ground_truth_w = solver.state['w']['g']
-        estimate_w = solver.state['w_']['g']
+        w_ = solver.state['w_']
+        w = solver.state['w']
+        dT_w = w_ - w
+        ground_truth_w = w['g']
+        estimate_w = w_['g']
 
-        problem.parameters["driving"].args = [solver.state['u_'], solver.state['u'], particleTracker.positions, x, z]
-        problem.parameters["driving"].original_args = [solver.state['u_'], solver.state['u'], particleTracker.positions,
+        problem.parameters["driving"].args = [u_, u, particleTracker.positions, x, z]
+        problem.parameters["driving"].original_args = [u_, u, particleTracker.positions,
                                                        x, z]
 
-        problem.parameters["driving_v"].args = [solver.state['w_'], solver.state['w'], particleTracker.positions, x, z]
-        problem.parameters["driving_v"].original_args = [solver.state['w_'], solver.state['w'],
+        problem.parameters["driving_v"].args = [w_, w, particleTracker.positions, x, z]
+        problem.parameters["driving_v"].original_args = [w_, w,
                                                          particleTracker.positions, x, z]
 
         u_error = np.linalg.norm(ground_truth - estimate) / np.linalg.norm(ground_truth)
@@ -185,7 +182,7 @@ try:
         dt = CFL.compute_dt()
         dt = solver.step(dt)
         parameters.dt = dt
-        particleTracker.step(dt, parameters, (u, w))
+        particleTracker.step(parameters, (u, w))
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
             locs.append(pos)
@@ -202,7 +199,7 @@ except Exception as e:
     print(e)
     raise
 finally:
-    print("difference", np.linalg.norm(init_particle_pos - particleTracker.positions))
+    # print("difference", np.linalg.norm(init_particle_pos - particleTracker.positions))
     end_time = time.time()
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
