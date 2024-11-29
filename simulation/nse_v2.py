@@ -53,7 +53,7 @@ driving = operators.GeneralFunction(domain, 'g', P_N, args=[])
 driving_v = operators.GeneralFunction(domain, 'g', P_N_w, args=[])
 problem = de.IVP(domain, variables=['p', 'p_', 'u', 'w', 'uz', 'wz', 'u_', 'w_', 'uz_', 'wz_'])
 problem.parameters['nu'] = nu
-problem.parameters['mu'] = 10
+problem.parameters['mu'] = 15
 problem.parameters['driving'] = driving
 problem.parameters['driving_v'] = driving_v
 # Nudge solution
@@ -126,9 +126,17 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
 
-N = 1000
+N = 64
 particleTracker = particles(N,domain)
-particleTracker.positions = np.random.uniform(-np.pi, np.pi, 2*N).reshape(-1,2)
+
+nx, ny = N, N
+x_positions = np.linspace(-Lx/2, Lx/2, nx)
+y_positions = np.linspace(z[0,0], z[0, -1], ny)
+
+sensor_positions = np.array([[x, y] for y in y_positions for x in x_positions])
+particleTracker.positions = sensor_positions
+# particleTracker.positions = np.random.uniform(-np.pi, np.pi, 2*N).reshape(-1,2)
+
 
 locs = []
 pos = copy.copy(particleTracker.positions)
