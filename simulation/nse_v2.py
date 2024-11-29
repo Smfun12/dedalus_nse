@@ -25,15 +25,16 @@ class SystemParameters:
     Lx: int
     Lz: int
     amplitude: int
+    # Possible values: Lcreeps, Lagrangian, Creeps
     sensor_type: str='Eulerian'
 
 logger = logging.getLogger(__name__)
 
 # Parameters
 Lx, Lz = 2 * np.pi, 2 * np.pi
-Nx, Nz = 512, 512
+Nx, Nz = 256, 256
 Reynolds = 2000
-stop_sim_time = 50
+stop_sim_time = 20
 timestepper = de.timesteppers.RK222
 max_timestep = 1e-2
 dtype = np.float64
@@ -96,8 +97,10 @@ u_.set_scales(1)
 w_.set_scales(1)
 # u_['g'] = 0.5 * np.array(ic['u1_cut'])
 # w_['g'] = 0.7 * np.array(ic2['u2_cut'])
-u_['g'] = np.zeros((Nx, Nz//4))
-w_['g'] = np.zeros((Nx, Nz//4))
+comm = MPI.COMM_WORLD
+num_threads = comm.Get_size()
+u_['g'] = np.zeros((Nx, Nx//num_threads))
+w_['g'] = np.zeros((Nx, Nz//num_threads))
 
 
 # Timestepping and output
@@ -123,7 +126,7 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
 
-N = 5000
+N = 1000
 particleTracker = particles(N,domain)
 particleTracker.positions = np.random.uniform(-np.pi, np.pi, 2*N).reshape(-1,2)
 
@@ -144,8 +147,8 @@ epochs = []
 u_errors = []
 w_errors = []
 
-parameters = SystemParameters(dt, Nx, Nz, Lx, Lz, 0.5)
-
+parameters = SystemParameters(dt, Nx, Nz, Lx, Lz, 0.5, sensor_type="Eulerian")
+parameters.threads = num_threads
 # Main loop
 try:
     logger.info('Starting main loop')
@@ -182,7 +185,7 @@ try:
         dt = CFL.compute_dt()
         dt = solver.step(dt)
         parameters.dt = dt
-        particleTracker.step(parameters, (u, w))
+        # particleTracker.step(parameters, (u, w))
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
             locs.append(pos)
@@ -201,7 +204,6 @@ except Exception as e:
 finally:
     # print("difference", np.linalg.norm(init_particle_pos - particleTracker.positions))
     end_time = time.time()
-    comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
 
     locs = np.array(locs)

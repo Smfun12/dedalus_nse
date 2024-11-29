@@ -18,13 +18,18 @@ def P_N(u_hat, u_obs, particle_locations, x, y, scale=False):
                                                     fill_value=None,
                                                     method='linear')
     Z_inter = interp_lag(points)
-    for i in range(-1, 2):
-        for j in range(-1, 2):
-            x_pts_per = np.concatenate((x_pts_per, lagrangian_x + 2*np.pi*i))
-            y_pts_per = np.concatenate((y_pts_per, lagrangian_y + 2*np.pi*j))
-            u_obss = np.concatenate((u_obss, Z_inter))
+    periodic_values = sp.interpolate.griddata((lagrangian_x, lagrangian_y), Z_inter, (X, Y), method='linear')
+    
+    nearest_interp = sp.interpolate.griddata((lagrangian_x, lagrangian_y), Z_inter, (X, Y), method='nearest')
+    combined_interp = np.where(np.isnan(periodic_values), nearest_interp, periodic_values)
+    periodic_values = combined_interp.reshape(X.shape)
+    # for i in range(-1, 2):
+    #     for j in range(-1, 2):
+    #         x_pts_per = np.concatenate((x_pts_per, lagrangian_x + 2*np.pi*i))
+    #         y_pts_per = np.concatenate((y_pts_per, lagrangian_y + 2*np.pi*j))
+    #         u_obss = np.concatenate((u_obss, Z_inter))
 
-    periodic_values = sp.interpolate.griddata((x_pts_per, y_pts_per), u_obss, (X, Y), method='linear')
+    # periodic_values = sp.interpolate.griddata((x_pts_per, y_pts_per), u_obss, (X, Y), method='linear')
 
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), u_hat['g'], bounds_error=False,
                                                     fill_value=None,
@@ -55,15 +60,18 @@ def P_N_w(u_hat, u_obs, particle_locations, x, y, scale=False):
                                                     fill_value=None,
                                                     method='linear')
     Z_inter = interp_lag(points)
+    periodic_values = sp.interpolate.griddata((lagrangian_x, lagrangian_y), Z_inter, (X, Y), method='linear')
     
-    for i in range(-1, 2):
-        for j in range(-1, 2):
-            x_pts_per = np.concatenate((x_pts_per, lagrangian_x + 2*np.pi*i))
-            y_pts_per = np.concatenate((y_pts_per, lagrangian_y + 2*np.pi*j))
-            u_obss = np.concatenate((u_obss, Z_inter))
+    nearest_interp = sp.interpolate.griddata((lagrangian_x, lagrangian_y), Z_inter, (X, Y), method='nearest')
+    combined_interp = np.where(np.isnan(periodic_values), nearest_interp, periodic_values)
+    periodic_values = combined_interp.reshape(X.shape)
+    # for i in range(-1, 2):
+    #     for j in range(-1, 2):
+    #         x_pts_per = np.concatenate((x_pts_per, lagrangian_x + 2*np.pi*i))
+    #         y_pts_per = np.concatenate((y_pts_per, lagrangian_y + 2*np.pi*j))
+    #         u_obss = np.concatenate((u_obss, Z_inter))
 
-
-    periodic_values = sp.interpolate.griddata((x_pts_per, y_pts_per), u_obss, (X, Y), method='linear')
+    # periodic_values = sp.interpolate.griddata((x_pts_per, y_pts_per), u_obss, (X, Y), method='linear')
 
     interp = sp.interpolate.RegularGridInterpolator((x_flatten, y_flatten), u_hat['g'], bounds_error=False,
                                                     fill_value=None,
