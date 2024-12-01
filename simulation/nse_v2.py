@@ -50,10 +50,10 @@ D = nu
 
 # Problem
 driving = operators.GeneralFunction(domain, 'g', P_N, args=[])
-driving_v = operators.GeneralFunction(domain, 'g', P_N_w, args=[])
+driving_v = operators.GeneralFunction(domain, 'g', P_N, args=[])
 problem = de.IVP(domain, variables=['p', 'p_', 'u', 'w', 'uz', 'wz', 'u_', 'w_', 'uz_', 'wz_'])
 problem.parameters['nu'] = nu
-problem.parameters['mu'] = 15
+problem.parameters['mu'] = .5
 problem.parameters['driving'] = driving
 problem.parameters['driving_v'] = driving_v
 # Nudge solution
@@ -126,17 +126,16 @@ CFL = flow_tools.CFL(solver, initial_dt=dt, cadence=10, safety=0.5, threshold=0.
                      max_change=1.5, min_change=0.5, max_dt=max_timestep)
 CFL.add_velocities(("u", "w"))
 
-N = 64
-particleTracker = particles(N,domain)
-
-nx, ny = N, N
-x_positions = np.linspace(-Lx/2, Lx/2, nx)
-y_positions = np.linspace(z[0,0], z[0, -1], ny)
-
-sensor_positions = np.array([[x, y] for y in y_positions for x in x_positions])
-particleTracker.positions = sensor_positions
+every_n_x_sensor = 1
+every_n_y_sensor = 1
+N = math.ceil(Nx / every_n_x_sensor) * math.ceil(Nz/(num_threads * every_n_y_sensor))
+# Initiate particles (N particles)
+particleTracker = particles(N, domain)
+xn, yn = np.squeeze(x[0:Nx:every_n_x_sensor]), np.squeeze(z.T[0:math.ceil(Nz/num_threads):every_n_y_sensor])
+X, Y = np.meshgrid(xn, yn)
+# particleTracker.positions = np.column_stack([X.ravel(), Y.ravel()])
+particleTracker.positions = np.vstack([X.ravel(), Y.ravel()]).T
 # particleTracker.positions = np.random.uniform(-np.pi, np.pi, 2*N).reshape(-1,2)
-
 
 locs = []
 pos = copy.copy(particleTracker.positions)
@@ -155,7 +154,7 @@ epochs = []
 u_errors = []
 w_errors = []
 
-parameters = SystemParameters(dt, Nx, Nz, Lx, Lz, 0.5, sensor_type="Eulerian")
+parameters = SystemParameters(dt, Nx, Nz, Lx, Lz, 0.5, sensor_type="Creeps")
 parameters.threads = num_threads
 # Main loop
 try:
@@ -176,12 +175,10 @@ try:
         estimate_w = w_['g']
 
         problem.parameters["driving"].args = [u_, u, particleTracker.positions, x, z]
-        problem.parameters["driving"].original_args = [u_, u, particleTracker.positions,
-                                                       x, z]
+        problem.parameters["driving"].original_args = [u_, u, particleTracker.positions, x, z]
 
         problem.parameters["driving_v"].args = [w_, w, particleTracker.positions, x, z]
-        problem.parameters["driving_v"].original_args = [w_, w,
-                                                         particleTracker.positions, x, z]
+        problem.parameters["driving_v"].original_args = [w_, w, particleTracker.positions, x, z]
 
         u_error = np.linalg.norm(ground_truth - estimate) / np.linalg.norm(ground_truth)
         w_error = np.linalg.norm(ground_truth_w - estimate_w) / np.linalg.norm(ground_truth_w)
@@ -193,7 +190,7 @@ try:
         dt = CFL.compute_dt()
         dt = solver.step(dt)
         parameters.dt = dt
-        # particleTracker.step(parameters, (u, w))
+        particleTracker.step(parameters, (u, w))
         if solver.sim_time >= savet:
             pos = copy.copy(particleTracker.positions)
             locs.append(pos)
@@ -213,13 +210,18 @@ finally:
     # print("difference", np.linalg.norm(init_particle_pos - particleTracker.positions))
     end_time = time.time()
     rank = comm.Get_rank()
-
+    
     locs = np.array(locs)
     locs = np.transpose(locs, axes=(1, 0, 2))
 
+    gathered_arrays = comm.gather(locs, root=0)
+    gathered_arrays = comm.gather(times, root=0)
+
     if rank == 0:
-        np.save('rbLocs', locs)
+        merged_array = np.concatenate(gathered_arrays)
+        np.save("rbLocs", merged_array)
         np.save('rbTimes', times)
+
     if not os.path.isdir("plots"):
         os.makedirs("plots")
     np.save('plots/rbErrors', u_errors)

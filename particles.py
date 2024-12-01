@@ -170,7 +170,7 @@ class particles:
                 for i in range(positions.shape[0]):
                     choice = random.randint(1, 5)
                     grid_step_x = p.Lx/(p.Nx-1)
-                    grid_step_y = p.Ly/(p.Nz//p.num_threads-1)
+                    grid_step_y = p.Lz/(p.Nz//p.threads-1)
                     if choice == 1:
                         v1, v2 = 0, grid_step_y
                     elif choice == 2:
